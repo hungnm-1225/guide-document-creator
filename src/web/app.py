@@ -253,6 +253,33 @@ async def run_recorder_endpoint(payload: RecorderPayload):
     return {"message": "Đang mở trình duyệt tương tác để ghi thao tác.", "status": "started"}
 
 
+@app.get("/api/tts/preview")
+async def preview_voice_endpoint(engine: str = "vieneu", voice: str = "Ái Hân", lang: str = "vi"):
+    """Tạo nhanh file mẫu âm thanh 2-3 giây để người dùng nghe thử trước khi tạo video"""
+    sample_text = f"Xin chào, đây là giọng đọc thử nghiệm {voice} của VieNeu T T S." if engine == "vieneu" else f"Xin chào, đây là giọng đọc thử nghiệm của hệ thống."
+    if lang == "en":
+        sample_text = f"Hello, this is a sample preview of {voice} voice."
+
+    safe_v = voice.replace(" ", "_").replace("·", "")
+    preview_file = settings.output_dir / "audio" / f"preview_{engine}_{safe_v}_{lang}.mp3"
+    preview_file.parent.mkdir(parents=True, exist_ok=True)
+
+    if engine == "vieneu":
+        from src.generators.video_gen import VieNeuTTSProvider
+        ok = VieNeuTTSProvider.generate_audio(sample_text, str(preview_file), voice=voice)
+        if not ok:
+            import edge_tts
+            comm = edge_tts.Communicate(sample_text, settings.tts_voice_vi)
+            await comm.save(str(preview_file))
+    else:
+        import edge_tts
+        v = voice if voice and ("Neural" in voice or "en-" in voice) else settings.tts_voice_vi
+        comm = edge_tts.Communicate(sample_text, v)
+        await comm.save(str(preview_file))
+
+    return FileResponse(str(preview_file), media_type="audio/mpeg")
+
+
 @app.post("/api/run-scenario")
 async def run_scenario_endpoint(payload: ScenarioPayload):
     if pipeline_status["is_running"]:
@@ -897,27 +924,37 @@ DASHBOARD_HTML = """<!DOCTYPE html>
 
             <div id="cfg-vieneu-box">
               <label class="block text-[11px] font-semibold text-slate-600 mb-1">Giọng Đọc VieNeu-TTS</label>
-              <select id="cfg-vieneu-voice" class="w-full text-xs px-3 py-2 bg-white border border-slate-200 rounded-lg focus:outline-none">
-                <option value="Ái Hân" selected>Ái Hân (Nữ · Nam · Tin tức truyền cảm - Khuyên dùng)</option>
-                <option value="Mỹ Duyên">Mỹ Duyên (Nữ · Bắc · Đọc truyện ngọt ngào)</option>
-                <option value="Mai Anh">Mai Anh (Nữ · Bắc · Tự nhiên, rõ ràng)</option>
-                <option value="Trúc Ly">Trúc Ly (Nữ · Bắc · Phong cách tự nhiên)</option>
-                <option value="Xuân Tiên">Xuân Tiên (Nữ · Bắc · Tin tức chuẩn)</option>
-                <option value="Đức Trí">Đức Trí (Nam · Bắc · Trầm ấm, truyền cảm)</option>
-                <option value="Hữu Quân">Hữu Quân (Nam · Bắc · Tin tức)</option>
-                <option value="Minh Quân">Minh Quân (Nam · Bắc · Tự nhiên)</option>
-                <option value="Mạnh Dũng">Mạnh Dũng (Nam · Bắc · Rõ ràng, dứt khoát)</option>
-                <option value="Anh Khôi">Anh Khôi (Nam · Bắc · Kể chuyện)</option>
-                <option value="Adam">Adam (Nam · Nam · Tự nhiên)</option>
-              </select>
+              <div class="flex items-center gap-2">
+                <select id="cfg-vieneu-voice" class="flex-1 text-xs px-3 py-2 bg-white border border-slate-200 rounded-lg focus:outline-none">
+                  <option value="Ái Hân" selected>Ái Hân (Nữ · Nam · Tin tức truyền cảm - Khuyên dùng)</option>
+                  <option value="Mỹ Duyên">Mỹ Duyên (Nữ · Bắc · Đọc truyện ngọt ngào)</option>
+                  <option value="Mai Anh">Mai Anh (Nữ · Bắc · Tự nhiên, rõ ràng)</option>
+                  <option value="Trúc Ly">Trúc Ly (Nữ · Bắc · Phong cách tự nhiên)</option>
+                  <option value="Xuân Tiên">Xuân Tiên (Nữ · Bắc · Tin tức chuẩn)</option>
+                  <option value="Đức Trí">Đức Trí (Nam · Bắc · Trầm ấm, truyền cảm)</option>
+                  <option value="Hữu Quân">Hữu Quân (Nam · Bắc · Tin tức)</option>
+                  <option value="Minh Quân">Minh Quân (Nam · Bắc · Tự nhiên)</option>
+                  <option value="Mạnh Dũng">Mạnh Dũng (Nam · Bắc · Rõ ràng, dứt khoát)</option>
+                  <option value="Anh Khôi">Anh Khôi (Nam · Bắc · Kể chuyện)</option>
+                  <option value="Adam">Adam (Nam · Nam · Tự nhiên)</option>
+                </select>
+                <button type="button" onclick="previewSelectedVoice('vieneu')" class="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer shrink-0" title="Bấm để nghe thử giọng này">
+                  <i data-lucide="play" class="w-3.5 h-3.5 fill-current"></i> Nghe thử
+                </button>
+              </div>
             </div>
 
             <div id="cfg-edgetts-box" class="hidden">
               <label class="block text-[11px] font-semibold text-slate-600 mb-1">Giọng Đọc Edge-TTS</label>
-              <select id="cfg-voice-vi" class="w-full text-xs px-3 py-2 bg-white border border-slate-200 rounded-lg focus:outline-none">
-                <option value="vi-VN-HoaiMyNeural">vi-VN-HoaiMyNeural (Nữ ấm áp)</option>
-                <option value="vi-VN-NamMinhNeural">vi-VN-NamMinhNeural (Nam truyền cảm)</option>
-              </select>
+              <div class="flex items-center gap-2">
+                <select id="cfg-voice-vi" class="flex-1 text-xs px-3 py-2 bg-white border border-slate-200 rounded-lg focus:outline-none">
+                  <option value="vi-VN-HoaiMyNeural">vi-VN-HoaiMyNeural (Nữ ấm áp)</option>
+                  <option value="vi-VN-NamMinhNeural">vi-VN-NamMinhNeural (Nam truyền cảm)</option>
+                </select>
+                <button type="button" onclick="previewSelectedVoice('edge-tts')" class="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer shrink-0" title="Bấm để nghe thử giọng này">
+                  <i data-lucide="play" class="w-3.5 h-3.5 fill-current"></i> Nghe thử
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -925,10 +962,15 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         <!-- English Voice -->
         <div>
           <label class="block text-xs font-bold text-slate-700 uppercase mb-1">English Voice (Thuyết minh tiếng Anh)</label>
-          <select id="cfg-voice-en" class="w-full text-sm px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl">
-            <option value="en-US-AriaNeural">en-US-AriaNeural (Female)</option>
-            <option value="en-US-GuyNeural">en-US-GuyNeural (Male)</option>
-          </select>
+          <div class="flex items-center gap-2">
+            <select id="cfg-voice-en" class="flex-1 text-sm px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl">
+              <option value="en-US-AriaNeural">en-US-AriaNeural (Female)</option>
+              <option value="en-US-GuyNeural">en-US-GuyNeural (Male)</option>
+            </select>
+            <button type="button" onclick="previewSelectedVoice('en')" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer shrink-0" title="Listen sample">
+              <i data-lucide="play" class="w-3.5 h-3.5 fill-current"></i> Listen
+            </button>
+          </div>
         </div>
 
         <div>
@@ -1358,6 +1400,37 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         alert(e);
         hideStatus();
       }
+    }
+
+    // Voice Preview Feature
+    let previewAudio = null;
+    function previewSelectedVoice(type) {
+      if (previewAudio) {
+        previewAudio.pause();
+      }
+      let engine = 'vieneu';
+      let voice = 'Ái Hân';
+      let lang = 'vi';
+
+      if (type === 'vieneu') {
+        engine = 'vieneu';
+        voice = document.getElementById('cfg-vieneu-voice').value;
+        lang = 'vi';
+      } else if (type === 'edge-tts') {
+        engine = 'edge-tts';
+        voice = document.getElementById('cfg-voice-vi').value;
+        lang = 'vi';
+      } else if (type === 'en') {
+        engine = 'edge-tts';
+        voice = document.getElementById('cfg-voice-en').value;
+        lang = 'en';
+      }
+
+      const url = `/api/tts/preview?engine=${encodeURIComponent(engine)}&voice=${encodeURIComponent(voice)}&lang=${lang}&_t=${Date.now()}`;
+      previewAudio = new Audio(url);
+      previewAudio.play().catch(e => {
+        alert('Không thể phát âm thanh xem thử: ' + e);
+      });
     }
 
     // Settings UI & Persistence

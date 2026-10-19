@@ -3,6 +3,8 @@ Autonomous Flow Agent (Hệ thống AI Tự Động Điều Hướng & Xử Lý 
 Tự động phát hiện luồng đăng nhập, xử lý redirect liên miền (OpenID Connect / Keycloak / OAuth),
 tìm ô nhập và nút bấm chuẩn xác mà người dùng KHÔNG CẦN phải tự định vị hay chọn từ 70+ DOM elements.
 """
+import os
+import re
 import asyncio
 import time
 from pathlib import Path
@@ -431,8 +433,133 @@ class AutonomousFlowAgent:
             )
 
             # -------------------------------------------------------------
-            # BƯỚC 7 & 8: Đi sâu vào chức năng nghiệp vụ (Deep Feature Walkthrough)
+            # BƯỚC 7+: Khám phá ngóc ngách chuyên sâu theo Yêu Cầu Người Dùng (Course / Tabs)
             # -------------------------------------------------------------
+            deep_steps = await self._execute_custom_deep_directives(page, goal, user_notes, step_idx)
+            for d_act in deep_steps:
+                recorded_actions.append(d_act)
+
+            await browser.close()
+
+        console.print(f"\n[bold green]🎉 Hoàn thành tự động hóa 100%![/bold green] Đã ghi nhận {len(recorded_actions)} bước chuẩn xác.")
+        return recorded_actions
+
+    async def _execute_custom_deep_directives(
+        self,
+        page: Page,
+        goal: str,
+        user_notes: Optional[str],
+        current_step: int
+    ) -> List[RecordedAction]:
+        """
+        Thực hiện chuỗi hành động chuyên sâu theo đúng yêu cầu nghiệp vụ của người dùng:
+        - Bấm vào khóa học cụ thể được chỉ định (e.g. LEANBOT Terra Protocol C++ (EN))
+        - Lần lượt đi qua từng chức năng/tab yêu cầu (Course, Grades, Competencies, Notes)
+        - Chụp ảnh và đóng khung Bounding Box cho từng vị trí!
+        """
+        actions = []
+        step_idx = current_step
+        prompt_text = f"{goal} {user_notes or ''}"
+
+        # 1. Trích xuất các thực thể trong ngoặc kép hoặc từ khóa khóa học
+        quotes = re.findall(r'[\"“\'](.*?)[\"”\']', prompt_text)
+        course_target = None
+        requested_tabs = []
+        for q in quotes:
+            q_str = q.strip()
+            if any(k == q_str.lower() for k in ['course', 'grades', 'competencies', 'notes']):
+                requested_tabs.append(q_str)
+            elif len(q_str) > 3 and not course_target:
+                course_target = q_str
+
+        # Fallback từ khóa khóa học nếu không để trong ngoặc kép
+        if not course_target:
+            for kw in ["LEANBOT Terra Protocol C++ (EN)", "LEANBOT Terra Protocol", "Leanbot", "Course"]:
+                if kw.lower() in prompt_text.lower():
+                    course_target = kw
+                    break
+
+        # Nếu người dùng có yêu cầu về các tab Course, Grades, Competencies, Notes nhưng không đặt trong ngoặc
+        if not requested_tabs:
+            for tab_kw in ['Course', 'Grades', 'Competencies', 'Notes']:
+                if tab_kw.lower() in prompt_text.lower():
+                    requested_tabs.append(tab_kw)
+
+        # 2. Tìm kiếm phần tử khóa học trên trang Dashboard
+        course_elem = None
+        if course_target:
+            candidates = await page.query_selector_all(f"a:has-text('{course_target}'), button:has-text('{course_target}')")
+            for c in candidates:
+                if await c.is_visible():
+                    course_elem = c
+                    break
+
+        if course_elem:
+            step_idx += 1
+            box_c = await course_elem.bounding_box()
+            c_bbox = BoundingBox(x=box_c["x"], y=box_c["y"], w=box_c["width"], h=box_c["height"]) if box_c else None
+            console.print(f"[cyan]▶ Bước {step_idx}:[/cyan] Truy cập khóa học: '[bold]{course_target}[/bold]'")
+
+            raw_path_c = str(self.output_raw_dir / f"step_{step_idx:02d}_raw.png")
+            await self._safe_screenshot(page, raw_path_c)
+            actions.append(
+                RecordedAction(
+                    step_number=step_idx,
+                    action_type="click",
+                    selector=f"a:has-text('{course_target}')",
+                    input_value=None,
+                    element_text=f"Khóa học {course_target}",
+                    bounding_box=c_bbox,
+                    raw_screenshot_path=raw_path_c,
+                    timestamp=time.time(),
+                    page_title=await page.title() or "",
+                    page_url=page.url,
+                )
+            )
+
+            # Click vào khóa học và chờ điều hướng sang trang Course view
+            try:
+                await course_elem.click()
+                await page.wait_for_load_state("domcontentloaded", timeout=10000)
+                await asyncio.sleep(2.5)
+            except Exception as e:
+                console.print(f"[yellow]⚠️ Lỗi điều hướng vào khóa học: {e}[/yellow]")
+
+            # 3. Quét và ghi lại các Tab chuyên sâu được yêu cầu (Course, Grades, Competencies, Notes)
+            for tab_name in requested_tabs:
+                tab_candidates = await page.query_selector_all(f"a:has-text('{tab_name}'), button:has-text('{tab_name}')")
+                target_tab = None
+                for t in tab_candidates:
+                    if await t.is_visible():
+                        b = await t.bounding_box()
+                        if b and b["width"] > 15:
+                            target_tab = t
+                            break
+
+                if target_tab:
+                    step_idx += 1
+                    t_box = await target_tab.bounding_box()
+                    tb_bbox = BoundingBox(x=t_box["x"], y=t_box["y"], w=t_box["width"], h=t_box["height"]) if t_box else None
+                    console.print(f"[cyan]▶ Bước {step_idx}:[/cyan] Khám phá chức năng: '[bold]{tab_name}[/bold]'")
+
+                    raw_path_tab = str(self.output_raw_dir / f"step_{step_idx:02d}_raw.png")
+                    await self._safe_screenshot(page, raw_path_tab)
+                    actions.append(
+                        RecordedAction(
+                            step_number=step_idx,
+                            action_type="click",
+                            selector=f"tab-{tab_name.lower()}",
+                            input_value=None,
+                            element_text=f"Chức năng {tab_name}",
+                            bounding_box=tb_bbox,
+                            raw_screenshot_path=raw_path_tab,
+                            timestamp=time.time(),
+                            page_title=await page.title() or "",
+                            page_url=page.url,
+                        )
+                    )
+        else:
+            # Fallback nếu không có khóa học đặc thù: tìm chức năng điều hướng
             deep_target = await self._find_deep_feature_target(page, goal, user_notes)
             if deep_target:
                 feat_elem, feat_name = deep_target
@@ -443,7 +570,7 @@ class AutonomousFlowAgent:
 
                 raw_path_f = str(self.output_raw_dir / f"step_{step_idx:02d}_raw.png")
                 await self._safe_screenshot(page, raw_path_f)
-                recorded_actions.append(
+                actions.append(
                     RecordedAction(
                         step_number=step_idx,
                         action_type="click",
@@ -458,36 +585,7 @@ class AutonomousFlowAgent:
                     )
                 )
 
-                try:
-                    await feat_elem.click()
-                    await asyncio.sleep(2.0)
-                    await page.wait_for_load_state("domcontentloaded", timeout=6000)
-                except Exception:
-                    pass
-
-                # Bước 8: Giao diện chi tiết của chức năng
-                step_idx += 1
-                raw_path_inner = str(self.output_raw_dir / f"step_{step_idx:02d}_raw.png")
-                await self._safe_screenshot(page, raw_path_inner)
-                recorded_actions.append(
-                    RecordedAction(
-                        step_number=step_idx,
-                        action_type="custom",
-                        selector="inner_feature",
-                        input_value=None,
-                        element_text=f"Nội dung chi tiết mục {feat_name}",
-                        bounding_box=None,
-                        raw_screenshot_path=raw_path_inner,
-                        timestamp=time.time(),
-                        page_title=await page.title() or "",
-                        page_url=page.url,
-                    )
-                )
-
-            await browser.close()
-
-        console.print(f"\n[bold green]🎉 Hoàn thành tự động hóa 100%![/bold green] Đã ghi nhận {len(recorded_actions)} bước chuẩn xác.")
-        return recorded_actions
+        return actions
 
     async def _find_deep_feature_target(self, page: Page, goal: str, user_notes: Optional[str] = None):
         """Tìm phần tử chức năng ngóc ngách phù hợp nhất với mục tiêu hoặc ghi chú người dùng"""
