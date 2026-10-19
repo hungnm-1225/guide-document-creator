@@ -1,0 +1,53 @@
+# Environment & Secrets (TUYỆT ĐỐI KHÔNG COMMIT FILE .ENV)
+.env
+.env.local
+*.env
+
+# Python Cache & Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv/
+
+# Playwright & Browsers
+.playwright/
+test-results/
+
+# Temporary Output Files (Audio, Video, Raw Screenshots)
+output/*.*
+output/raw_screenshots/*
+output/annotated_images/*
+output/audio/*
+output/videos/*
+output/recon/*
+output/documents/*
+output/slides/*
+!output/**/.gitkeep
+
+# IDE & OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

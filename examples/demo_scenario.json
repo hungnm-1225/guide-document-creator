@@ -1,0 +1,28 @@
+{
+  "title_vi": "Hướng Dẫn Đăng Nhập Cổng Quản Trị Hệ Thống",
+  "title_en": "Guide to Logging into the System Admin Portal",
+  "summary_vi": "Quy trình từng bước hướng dẫn người dùng đăng nhập an toàn vào cổng quản trị thông qua form xác thực.",
+  "summary_en": "A step-by-step walk-through instructing users how to securely authenticate into the administration portal.",
+  "steps": [
+    {
+      "action": "fill",
+      "target": "#username",
+      "value": "quantri_vien@company.vn",
+      "label": "Nhập tên tài khoản",
+      "wait_after": 1.0
+    },
+    {
+      "action": "fill",
+      "target": "#password",
+      "value": "MatKhauBaoMat@2026",
+      "label": "Nhập mật khẩu truy cập",
+      "wait_after": 1.0
+    },
+    {
+      "action": "click",
+      "target": "#btn-submit",
+      "label": "Bấm nút Đăng nhập",
+      "wait_after": 1.5
+    }
+  ]
+}

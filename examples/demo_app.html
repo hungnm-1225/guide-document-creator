@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>Cổng Quản Trị Hệ Thống - Demo</title>
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f1f5f9; margin: 0; padding: 40px; }
+    .card { max-width: 520px; margin: 40px auto; background: white; border-radius: 12px; padding: 32px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+    h1 { color: #1e293b; font-size: 24px; margin-bottom: 8px; }
+    p { color: #64748b; font-size: 14px; margin-bottom: 24px; }
+    .form-group { margin-bottom: 20px; }
+    label { display: block; font-weight: 600; font-size: 13px; color: #334155; margin-bottom: 6px; }
+    input[type="text"], input[type="password"] {
+      width: 100%; padding: 12px 14px; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 14px; box-sizing: border-box; transition: 0.2s;
+    }
+    input:focus { border-color: #2563eb; outline: none; }
+    .btn-submit {
+      width: 100%; background: #2563eb; color: white; padding: 12px; border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer;
+    }
+    .btn-submit:hover { background: #1d4ed8; }
+    .nav-tabs { display: flex; gap: 12px; margin-bottom: 20px; }
+    .tab { padding: 8px 16px; border-radius: 6px; background: #e2e8f0; color: #475569; font-weight: 5px; cursor: pointer; }
+    .tab.active { background: #2563eb; color: white; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="nav-tabs">
+      <div class="tab active" id="tab-login">Đăng nhập Quản trị</div>
+      <div class="tab" id="tab-support">Trợ giúp & Hỗ trợ</div>
+    </div>
+    <h1>Chào mừng bạn trở lại</h1>
+    <p>Vui lòng điền thông tin tài khoản được cấp để truy cập hệ thống.</p>
+    <form id="loginForm" onsubmit="event.preventDefault(); alert('Đăng nhập thành công!');">
+      <div class="form-group">
+        <label for="username">Tên tài khoản hoặc Email</label>
+        <input type="text" id="username" placeholder="Nhập tên tài khoản của bạn" required />
+      </div>
+      <div class="form-group">
+        <label for="password">Mật khẩu bảo mật</label>
+        <input type="password" id="password" placeholder="Nhập mật khẩu" required />
+      </div>
+      <button type="submit" id="btn-submit" class="btn-submit">Đăng nhập vào hệ thống</button>
+    </form>
+  </div>
+</body>
+</html>

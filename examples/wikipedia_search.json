@@ -1,0 +1,28 @@
+{
+  "title_vi": "Hướng Dẫn Tìm Kiếm Thông Tin Trên Wikipedia",
+  "title_en": "Guide to Searching Information on Wikipedia",
+  "summary_vi": "Tài liệu minh họa quy trình mở trang bách khoa toàn thư Wikipedia, nhập từ khóa tìm kiếm và tra cứu bài viết một cách nhanh chóng.",
+  "summary_en": "A step-by-step practical demonstration of accessing Wikipedia, typing search queries, and navigating to detailed encyclopedia articles.",
+  "url": "https://vi.wikipedia.org",
+  "steps": [
+    {
+      "action": "click",
+      "target": "input[name='search']",
+      "label": "Bấm vào thanh tìm kiếm",
+      "wait_after": 1.0
+    },
+    {
+      "action": "fill",
+      "target": "input[name='search']",
+      "value": "Trí tuệ nhân tạo",
+      "label": "Nhập từ khóa tìm kiếm",
+      "wait_after": 1.5
+    },
+    {
+      "action": "click",
+      "target": "button.cdx-search-input__end-button, button[type='submit']",
+      "label": "Bấm nút Tìm kiếm",
+      "wait_after": 2.5
+    }
+  ]
+}
