@@ -488,13 +488,27 @@ class AutonomousFlowAgent:
         # 2. Tìm kiếm phần tử khóa học trên trang Dashboard
         course_elem = None
         if course_target:
-            candidates = await page.query_selector_all(f"a:has-text('{course_target}'), button:has-text('{course_target}')")
+            candidates = await page.query_selector_all(f"a:has-text('{course_target}')")
+            # Ưu tiên thẻ a có href dẫn tới trang tổng quan khóa học (course/view.php)
             for c in candidates:
-                if await c.is_visible():
+                href = (await c.get_attribute("href")) or ""
+                if await c.is_visible() and "course/view" in href:
                     course_elem = c
                     break
+            if not course_elem:
+                for c in candidates:
+                    if await c.is_visible():
+                        course_elem = c
+                        break
 
         if course_elem:
+            # Cuộn phần tử vào giữa màn hình trước khi chụp ảnh và click
+            try:
+                await course_elem.evaluate('el => el.scrollIntoView({ block: "center" })')
+                await asyncio.sleep(1.0)
+            except Exception:
+                pass
+
             step_idx += 1
             box_c = await course_elem.bounding_box()
             c_bbox = BoundingBox(x=box_c["x"], y=box_c["y"], w=box_c["width"], h=box_c["height"]) if box_c else None
@@ -517,24 +531,32 @@ class AutonomousFlowAgent:
                 )
             )
 
-            # Click vào khóa học và chờ điều hướng sang trang Course view
+            # Mở khóa học trực tiếp qua href để đảm bảo 100% điều hướng thành công
             try:
-                await course_elem.click()
-                await page.wait_for_load_state("domcontentloaded", timeout=10000)
+                c_href = await course_elem.get_attribute("href")
+                if c_href and "http" in c_href:
+                    console.print(f"   🌐 Đang mở khóa học tại: {c_href}")
+                    await page.goto(c_href, wait_until="domcontentloaded", timeout=15000)
+                else:
+                    await course_elem.click(timeout=6000)
+                    await page.wait_for_load_state("domcontentloaded", timeout=10000)
                 await asyncio.sleep(2.5)
             except Exception as e:
                 console.print(f"[yellow]⚠️ Lỗi điều hướng vào khóa học: {e}[/yellow]")
 
-            # 3. Quét và ghi lại các Tab chuyên sâu được yêu cầu (Course, Grades, Competencies, Notes)
+            # 3. Quét và ghi lại các Tab chuyên sâu (Course, Grades, Competencies, Notes)
+            # Định vị CHÍNH XÁC thanh nav-link bên dưới banner (y > 150), tránh nhầm với nút drawer màu xanh ở góc trên
             for tab_name in requested_tabs:
-                tab_candidates = await page.query_selector_all(f"a:has-text('{tab_name}'), button:has-text('{tab_name}')")
+                tab_candidates = await page.query_selector_all(".secondary-navigation a, .nav-tabs a, nav a.nav-link, a.nav-link")
                 target_tab = None
                 for t in tab_candidates:
                     if await t.is_visible():
-                        b = await t.bounding_box()
-                        if b and b["width"] > 15:
-                            target_tab = t
-                            break
+                        t_txt = (await t.inner_text()).strip()
+                        if t_txt.lower() == tab_name.lower():
+                            b = await t.bounding_box()
+                            if b and b["width"] > 15 and b["y"] > 150:
+                                target_tab = t
+                                break
 
                 if target_tab:
                     step_idx += 1
@@ -558,6 +580,83 @@ class AutonomousFlowAgent:
                             page_url=page.url,
                         )
                     )
+
+            # 4. CUỘN XUỐNG VÀ CLICK VÀO BÀI HỌC (Lessons / Learning Guide)
+            console.print("   📜 Đang cuộn trang xuống phần bài học để hướng dẫn học tập...")
+            await page.evaluate('window.scrollBy({ top: 400, behavior: "smooth" })')
+            await asyncio.sleep(1.5)
+
+            lesson_candidates = await page.query_selector_all("a:has-text('Learning Guide'), a:has-text('M1L1'), a.aalink")
+            target_lesson = None
+            for l in lesson_candidates:
+                if await l.is_visible():
+                    target_lesson = l
+                    break
+
+            if target_lesson:
+                await target_lesson.evaluate('el => el.scrollIntoView({ block: "center", behavior: "smooth" })')
+                await asyncio.sleep(1.5)
+                l_box = await target_lesson.bounding_box()
+                lb_bbox = BoundingBox(x=l_box["x"], y=l_box["y"], w=l_box["width"], h=l_box["height"]) if l_box else None
+                lesson_text = (await target_lesson.inner_text()).strip().replace('\n', ' ')
+                console.print(f"[cyan]▶ Bước {step_idx + 1}:[/cyan] Chọn bài học: '[bold]{lesson_text[:40]}[/bold]'")
+
+                step_idx += 1
+                raw_path_lesson = str(self.output_raw_dir / f"step_{step_idx:02d}_raw.png")
+                await self._safe_screenshot(page, raw_path_lesson)
+                actions.append(
+                    RecordedAction(
+                        step_number=step_idx,
+                        action_type="click",
+                        selector="a.aalink",
+                        input_value=None,
+                        element_text=f"Bài học {lesson_text[:50]}",
+                        bounding_box=lb_bbox,
+                        raw_screenshot_path=raw_path_lesson,
+                        timestamp=time.time(),
+                        page_title=await page.title() or "",
+                        page_url=page.url,
+                    )
+                )
+
+                # Mở bài học trực tiếp qua href
+                try:
+                    l_href = await target_lesson.get_attribute("href")
+                    if l_href and "http" in l_href:
+                        console.print(f"   🌐 Đang mở bài học tại: {l_href}")
+                        await page.goto(l_href, wait_until="domcontentloaded", timeout=15000)
+                    else:
+                        await target_lesson.click(timeout=6000)
+                        await page.wait_for_load_state("domcontentloaded", timeout=10000)
+                    await asyncio.sleep(2.5)
+
+                    # Tìm nút Enter / Bắt đầu học trong bài giảng
+                    enter_btn = await page.query_selector("button:has-text('Enter'), a:has-text('Enter'), button.btn-primary")
+                    e_bbox = None
+                    if enter_btn and await enter_btn.is_visible():
+                        e_box = await enter_btn.bounding_box()
+                        if e_box:
+                            e_bbox = BoundingBox(x=e_box["x"], y=e_box["y"], w=e_box["width"], h=e_box["height"])
+
+                    step_idx += 1
+                    raw_path_inner_view = str(self.output_raw_dir / f"step_{step_idx:02d}_raw.png")
+                    await self._safe_screenshot(page, raw_path_inner_view)
+                    actions.append(
+                        RecordedAction(
+                            step_number=step_idx,
+                            action_type="click" if e_bbox else "custom",
+                            selector="button-enter",
+                            input_value=None,
+                            element_text="Bắt đầu học bài học (Nút Enter)",
+                            bounding_box=e_bbox,
+                            raw_screenshot_path=raw_path_inner_view,
+                            timestamp=time.time(),
+                            page_title=await page.title() or "",
+                            page_url=page.url,
+                        )
+                    )
+                except Exception as e:
+                    console.print(f"[yellow]⚠️ Lỗi mở bài học: {e}[/yellow]")
         else:
             # Fallback nếu không có khóa học đặc thù: tìm chức năng điều hướng
             deep_target = await self._find_deep_feature_target(page, goal, user_notes)
