@@ -48,7 +48,7 @@ class Settings(BaseModel):
     
     # TTS Settings (VieNeu-TTS & Edge-TTS)
     tts_engine_vi: str = Field(default_factory=lambda: os.getenv("TTS_ENGINE_VI", "vieneu"))
-    vieneu_voice: str = Field(default_factory=lambda: os.getenv("VIENEU_VOICE", "hn_nu"))
+    vieneu_voice: str = Field(default_factory=lambda: os.getenv("VIENEU_VOICE", "Ái Hân"))
     vieneu_mode: str = Field(default_factory=lambda: os.getenv("VIENEU_MODE", "v3nano"))
     tts_voice_vi: str = Field(default_factory=lambda: os.getenv("TTS_VOICE_VI", "vi-VN-HoaiMyNeural"))
     tts_voice_en: str = Field(default_factory=lambda: os.getenv("TTS_VOICE_EN", "en-US-AriaNeural"))

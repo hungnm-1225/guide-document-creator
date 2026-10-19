@@ -7,6 +7,8 @@ Tạo tài liệu hướng dẫn sử dụng định dạng Word (.docx) và Mar
 - Hộp mẹo (Callout Tips / Notes)
 - Hỗ trợ xuất tiếng Việt (vi), tiếng Anh (en) hoặc song ngữ
 """
+import shutil
+from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 import docx
@@ -184,9 +186,18 @@ class DocumentGenerator:
 
             doc.add_paragraph()  # khoảng cách giữa các bước
 
-        filename = f"guide_{lang}.docx"
-        out_path = self.output_dir / filename
+        gid = getattr(guidebook, "guide_id", None) or datetime.now().strftime("%Y%m%d_%H%M%S")
+        versioned_filename = f"guide_{lang}_{gid}.docx"
+        out_path = self.output_dir / versioned_filename
         doc.save(str(out_path))
+
+        # Lưu thêm bản latest để xem nhanh
+        latest_path = self.output_dir / f"guide_{lang}.docx"
+        try:
+            shutil.copyfile(str(out_path), str(latest_path))
+        except Exception:
+            pass
+
         return str(out_path)
 
     def generate_markdown(self, guidebook: GuideBook, lang: str = "vi") -> str:
@@ -222,8 +233,16 @@ class DocumentGenerator:
                     lines.append(f"> 💡 **Lưu ý**: {stip}")
                     lines.append("")
 
-        filename = f"guide_{lang}.md"
-        out_path = self.output_dir / filename
+        gid = getattr(guidebook, "guide_id", None) or datetime.now().strftime("%Y%m%d_%H%M%S")
+        versioned_filename = f"guide_{lang}_{gid}.md"
+        out_path = self.output_dir / versioned_filename
         with open(out_path, "w", encoding="utf-8") as f:
             f.write("\n".join(lines))
+
+        latest_path = self.output_dir / f"guide_{lang}.md"
+        try:
+            shutil.copyfile(str(out_path), str(latest_path))
+        except Exception:
+            pass
+
         return str(out_path)

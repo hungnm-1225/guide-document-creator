@@ -10,8 +10,10 @@ Sản xuất video hướng dẫn người dùng chuyên nghiệp (MP4) 100% t�
 4. Xuất video MP4 độ phân giải cao bằng MoviePy và FFmpeg.
 """
 import os
+import shutil
 import asyncio
 import subprocess
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, List, Dict
 import numpy as np
@@ -54,7 +56,14 @@ class VieNeuTTSProvider:
         try:
             out_p = Path(output_path)
             wav_tmp = out_p.with_suffix(".wav")
-            audio = engine.infer(text=text, voice=voice or getattr(settings, "vieneu_voice", "hn_nu"))
+
+            # Chuẩn hóa voice name an toàn tuyệt đối, tránh lỗi KeyError
+            chosen_voice = voice or getattr(settings, "vieneu_voice", "Ái Hân")
+            available_voices = list(engine._preset_voices.keys()) if hasattr(engine, "_preset_voices") else []
+            if available_voices and chosen_voice not in available_voices:
+                chosen_voice = "Ái Hân" if "Ái Hân" in available_voices else available_voices[0]
+
+            audio = engine.infer(text=text, voice=chosen_voice)
             engine.save(audio, str(wav_tmp))
             
             # Chuyển đổi WAV sang MP3 để tối ưu dung lượng và tương thích MoviePy
@@ -211,7 +220,8 @@ class VideoGenerator:
         # Nối tất cả các clip
         final_video = concatenate_videoclips(clips, method="compose")
 
-        output_filename = f"guide_{lang}.mp4"
+        gid = getattr(guidebook, "guide_id", None) or datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_filename = f"guide_{lang}_{gid}.mp4"
         out_video_path = self.output_dir / output_filename
 
         console.print(f"📦 Đang kết xuất video ra [bold]{out_video_path}[/bold]...")
@@ -223,6 +233,13 @@ class VideoGenerator:
             threads=4,
             logger=None  # Tránh in rác terminal
         )
+
+        # Lưu thêm bản latest để xem nhanh
+        latest_path = self.output_dir / f"guide_{lang}.mp4"
+        try:
+            shutil.copyfile(str(out_video_path), str(latest_path))
+        except Exception:
+            pass
 
         # Giải phóng tài nguyên
         try:

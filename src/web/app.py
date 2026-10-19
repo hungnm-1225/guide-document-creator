@@ -96,9 +96,9 @@ class SurveyPayload(BaseModel):
 
 class SettingsPayload(BaseModel):
     gemini_api_key: Optional[str] = None
-    gemini_model: Optional[str] = "gemini-2.5-flash"
+    gemini_model: Optional[str] = "gemini-3.5-flash-lite"
     tts_engine_vi: Optional[str] = "vieneu"
-    vieneu_voice: Optional[str] = "hn_nu"
+    vieneu_voice: Optional[str] = "Ái Hân"
     vieneu_mode: Optional[str] = "v3nano"
     tts_voice_vi: Optional[str] = "vi-VN-HoaiMyNeural"
     tts_voice_en: Optional[str] = "en-US-AriaNeural"
@@ -155,12 +155,15 @@ async def get_artifacts():
     def list_files(d: Path, ext_list: list):
         items = []
         if d.exists():
-            for f in sorted(d.glob("*")):
-                if f.suffix.lower() in ext_list:
+            import datetime
+            for f in sorted(d.glob("*"), key=lambda x: x.stat().st_mtime, reverse=True):
+                if f.suffix.lower() in ext_list and f.name != ".gitkeep":
+                    created_str = datetime.datetime.fromtimestamp(f.stat().st_mtime).strftime("%d/%m/%Y %H:%M:%S")
                     items.append({
                         "name": f.name,
                         "size_bytes": f.stat().st_size,
                         "updated_at": f.stat().st_mtime,
+                        "created_time": created_str,
                         "rel_path": f.relative_to(settings.output_dir).as_posix(),
                         "url": f"/static/output/{f.relative_to(settings.output_dir).as_posix()}",
                     })
@@ -895,10 +898,17 @@ DASHBOARD_HTML = """<!DOCTYPE html>
             <div id="cfg-vieneu-box">
               <label class="block text-[11px] font-semibold text-slate-600 mb-1">Giọng Đọc VieNeu-TTS</label>
               <select id="cfg-vieneu-voice" class="w-full text-xs px-3 py-2 bg-white border border-slate-200 rounded-lg focus:outline-none">
-                <option value="hn_nu">Hà Nội - Nữ (truyền cảm, tự nhiên)</option>
-                <option value="sg_nam">Sài Gòn - Nam (ấm áp)</option>
-                <option value="sg_nu">Sài Gòn - Nữ (dễ nghe)</option>
-                <option value="hn_nam">Hà Nội - Nam (rõ ràng)</option>
+                <option value="Ái Hân" selected>Ái Hân (Nữ · Nam · Tin tức truyền cảm - Khuyên dùng)</option>
+                <option value="Mỹ Duyên">Mỹ Duyên (Nữ · Bắc · Đọc truyện ngọt ngào)</option>
+                <option value="Mai Anh">Mai Anh (Nữ · Bắc · Tự nhiên, rõ ràng)</option>
+                <option value="Trúc Ly">Trúc Ly (Nữ · Bắc · Phong cách tự nhiên)</option>
+                <option value="Xuân Tiên">Xuân Tiên (Nữ · Bắc · Tin tức chuẩn)</option>
+                <option value="Đức Trí">Đức Trí (Nam · Bắc · Trầm ấm, truyền cảm)</option>
+                <option value="Hữu Quân">Hữu Quân (Nam · Bắc · Tin tức)</option>
+                <option value="Minh Quân">Minh Quân (Nam · Bắc · Tự nhiên)</option>
+                <option value="Mạnh Dũng">Mạnh Dũng (Nam · Bắc · Rõ ràng, dứt khoát)</option>
+                <option value="Anh Khôi">Anh Khôi (Nam · Bắc · Kể chuyện)</option>
+                <option value="Adam">Adam (Nam · Nam · Tự nhiên)</option>
               </select>
             </div>
 
@@ -1288,7 +1298,11 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                 <span class="p-2 rounded-lg border ${badgeColor}"><i data-lucide="${iconName}" class="w-4 h-4"></i></span>
                 <div>
                   <div class="font-bold text-xs text-slate-900">${d.name}</div>
-                  <div class="text-[10px] text-slate-400 font-mono">${(d.size_bytes / 1024).toFixed(1)} KB</div>
+                  <div class="text-[10px] text-slate-500 flex items-center gap-2 mt-0.5">
+                    <span>${(d.size_bytes / 1024).toFixed(1)} KB</span>
+                    <span>•</span>
+                    <span class="font-mono text-slate-400">${d.created_time || ''}</span>
+                  </div>
                 </div>
               </div>
               <a href="${d.url}" download class="p-2 hover:bg-white rounded-lg text-slate-600 hover:text-rose-600 transition border border-transparent hover:border-slate-200">

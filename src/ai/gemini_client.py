@@ -1,7 +1,7 @@
 """
 Gemini Multimodal AI Client
 Xử lý hình ảnh screenshot + log hành động để sinh ra nội dung hướng dẫn người dùng:
-- Model: gemini-2.5-flash (hoặc gemini-1.5-flash)
+- Model mặc định: gemini-3.5-flash-lite (Hạn ngạch cao nhất: 500 RPD miễn phí)
 - Structured JSON Output chuẩn Pydantic
 - Đồng thời sinh song ngữ Tiếng Việt (vi) và Tiếng Anh (en)
 - Xử lý Rate-limit bằng Tenacity exponential backoff
@@ -45,7 +45,7 @@ class GeminiAnalyzer:
 
     def __init__(self, api_key: Optional[str] = None, model_name: Optional[str] = None):
         self.api_key = api_key or settings.gemini_api_key or os.getenv("GEMINI_API_KEY", "")
-        self.model_name = model_name or settings.gemini_model or "gemini-2.5-flash"
+        self.model_name = model_name or settings.gemini_model or "gemini-3.5-flash-lite"
         self.client = None
         self._init_client()
 

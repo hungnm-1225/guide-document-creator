@@ -6,6 +6,8 @@ Tạo bài thuyết trình Slides PowerPoint (.pptx) chuẩn 16:9 hiện đại:
 - Cột phải: Ảnh screenshot highlight kích thước lớn, chiếm phần lớn thị giác
 - Hỗ trợ xuất tiếng Việt (vi) và tiếng Anh (en)
 """
+import shutil
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 from pptx import Presentation
@@ -49,9 +51,18 @@ class SlideGenerator:
         # 3. Slide Kết thúc (Summary Slide)
         self._create_outro_slide(prs, blank_slide_layout, guidebook, lang)
 
-        filename = f"slides_{lang}.pptx"
-        out_path = self.output_dir / filename
+        gid = getattr(guidebook, "guide_id", None) or datetime.now().strftime("%Y%m%d_%H%M%S")
+        versioned_filename = f"slides_{lang}_{gid}.pptx"
+        out_path = self.output_dir / versioned_filename
         prs.save(str(out_path))
+
+        # Lưu thêm bản latest để xem nhanh
+        latest_path = self.output_dir / f"slides_{lang}.pptx"
+        try:
+            shutil.copyfile(str(out_path), str(latest_path))
+        except Exception:
+            pass
+
         return str(out_path)
 
     def _create_cover_slide(self, prs, layout, guidebook: GuideBook, lang: str):
