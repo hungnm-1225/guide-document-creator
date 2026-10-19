@@ -122,8 +122,13 @@ QUY TẮC BẢO MẬT & CHUYÊN NGHIỆP TUYỆT ĐỐI (BẮT BUỘC):
    - Nếu thao tác là nhập mật khẩu: Hãy viết "Nhập mật khẩu bảo mật của bạn vào ô Mật khẩu".
 2. LOẠI BỎ CÂU RÁC SÁO RỖNG:
    - TUYỆT ĐỐI KHÔNG sinh các câu như "Quan sát kỹ vị trí khung viền đỏ", "Nhìn vào ô màu đỏ", "Bấm vào khung viền". Hãy mô tả theo đúng tên nút và mục đích nghiệp vụ của phần mềm!
-3. KẾT HỢP GHI CHÚ NGƯỜI DÙNG:
-   - Nếu có Ghi chú/Yêu cầu bổ sung từ người dùng, hãy lồng ghép khéo léo vào kịch bản lời thoại và phần mô tả để video và tài liệu đạt độ chi tiết cao nhất.
+3. THUYẾT MINH CHI TIẾT & GIẢI THÍCH Ý NGHĨA CHỨC NĂNG (BẮT BUỘC THEO GHI CHÚ NGƯỜI DÙNG):
+   - Khi bước thao tác là truy cập một chức năng trên Menu bên trái hoặc mở khám phá giao diện (ví dụ Dashboard, My Courses, Khóa học, Khung năng lực, Không gian học tập...):
+   - Lời thoại thuyết minh (voiceover_script) và phần mô tả (description) PHẢI giải thích sâu sắc, tự nhiên:
+     * Chức năng này tên là gì và có ý nghĩa, vai trò gì đối với học viên/người dùng?
+     * Trên màn hình của chức năng đó đang có những thông tin, chỉ số hay công cụ chính nào?
+     * Hướng dẫn học viên cách theo dõi và khai thác chức năng đó để việc học đạt hiệu quả cao nhất.
+   - TUYỆT ĐỐI KHÔNG thuyết minh qua loa, đại khái hay cụt lủn! Lời thoại phải đủ dài, truyền cảm và mang tính sư phạm cao.
 
 Nhiệm vụ:
 Tạo nội dung hướng dẫn cho bước này ở cả hai ngôn ngữ: Tiếng Việt (vi) và Tiếng Anh (en).
@@ -259,61 +264,46 @@ Yêu cầu xuất ra DUY NHẤT một chuỗi JSON hợp lệ theo định dạn
                 slide_en = "Click Login to access the system."
                 voice_vi = "Bây giờ, bạn bấm vào nút Đăng nhập để truy cập vào hệ thống."
                 voice_en = "Now, click the Login button to access the system."
-            elif "leanbot" in txt_lower or "khóa học" in txt_lower:
-                c_name = target_name.replace("Khóa học ", "")
-                title_vi = f"Truy cập khóa học {c_name}"
-                title_en = f"Access Course {c_name}"
-                desc_vi = f"Trong danh sách các khóa học đã đăng ký, nhấp vào {c_name} để mở nội dung học tập."
-                desc_en = f"In your enrolled courses list, click on {c_name} to open the course curriculum."
-                slide_vi = f"Truy cập khóa học: {c_name}."
-                slide_en = f"Open course: {c_name}."
-                voice_vi = f"Tại danh sách khóa học của bạn, bạn nhấp vào khóa học {c_name} để bắt đầu học tập."
-                voice_en = f"In your enrolled courses list, click on {c_name} to begin learning."
-            elif "course" in txt_lower:
-                title_vi = "Chức năng Course (Nội dung bài học)"
-                title_en = "Course Feature (Curriculum)"
-                desc_vi = "Mục Course hiển thị toàn bộ lộ trình bài giảng, tài liệu hướng dẫn và bài tập thực hành theo từng học phần."
-                desc_en = "The Course section displays all lecture units, learning guides, and practical exercises."
-                slide_vi = "Khu vực bài học & tài liệu học tập (Course)."
-                slide_en = "Course curriculum and study materials."
-                voice_vi = "Mục Course là nơi hiển thị toàn bộ lộ trình bài giảng và tài liệu học tập của khóa học."
-                voice_en = "The Course section presents the complete curriculum and lesson materials."
-            elif "grades" in txt_lower:
-                title_vi = "Chức năng Grades (Sổ điểm học tập)"
-                title_en = "Grades Feature (Gradebook)"
-                desc_vi = "Mục Grades cho phép học sinh theo dõi điểm số chi tiết và tiến độ hoàn thành các bài tập thực hành."
-                desc_en = "The Grades tab allows students to monitor grades, assignments, and evaluation progress."
-                slide_vi = "Theo dõi điểm số và kết quả đánh giá (Grades)."
-                slide_en = "Track grades and evaluation results."
-                voice_vi = "Mục Grades là sổ điểm điện tử, giúp học sinh kiểm tra điểm số và nhận xét từ giảng viên."
-                voice_en = "The Grades tab serves as your gradebook to review scores and instructor feedback."
-            elif "competencies" in txt_lower:
-                title_vi = "Chức năng Competencies (Khung năng lực)"
-                title_en = "Competencies Feature"
-                desc_vi = "Mục Competencies hiển thị các chuẩn đầu ra và tiêu chí kỹ năng mà học viên đạt được qua từng bài học."
-                desc_en = "The Competencies section displays skill standards and learning outcomes achieved."
-                slide_vi = "Khung chuẩn năng lực học viên (Competencies)."
-                slide_en = "Competencies and learning outcomes."
-                voice_vi = "Mục Competencies hiển thị các chuẩn năng lực và kỹ năng thực tế mà bạn đạt được trong khóa học."
-                voice_en = "The Competencies section outlines the practical skills and competencies acquired."
-            elif "notes" in txt_lower:
-                title_vi = "Chức năng Notes (Ghi chú học tập)"
-                title_en = "Notes Feature"
-                desc_vi = "Mục Notes cho phép ghi chép và lưu trữ các lưu ý quan trọng trong suốt quá trình học tập."
-                desc_en = "The Notes tab lets students create and manage personal study notes."
-                slide_vi = "Ghi chú và lưu trữ kiến thức (Notes)."
-                slide_en = "Take and organize study notes."
-                voice_vi = "Mục Notes cho phép bạn tạo và quản lý các ghi chú học tập cá nhân để ôn tập kiến thức."
-                voice_en = "The Notes feature allows you to maintain personal notes for effective review."
+            elif "menu bên trái" in txt_lower:
+                clean_name = target_name.replace("Mục ", "").replace(" trên Menu bên trái", "").strip()
+                title_vi = f"Truy cập {clean_name} trên Menu bên trái"
+                title_en = f"Access {clean_name} from Left Menu"
+                desc_vi = f"Tại thanh điều hướng bên trái màn hình, nhấp vào mục '{clean_name}' để chuyển tới giao diện chức năng tương ứng."
+                desc_en = f"On the left navigation menu, click on '{clean_name}' to navigate to this feature module."
+                slide_vi = f"Mở chức năng: {clean_name} trên Menu bên trái."
+                slide_en = f"Access: {clean_name} on left sidebar."
+                voice_vi = f"Tại thanh điều hướng bên trái, bạn nhấp vào mục {clean_name} để khám phá các công cụ và nội dung của chức năng này."
+                voice_en = f"From the left navigation menu, click on {clean_name} to explore this feature and its available tools."
+            elif "khám phá chi tiết giao diện" in txt_lower or "giao diện" in txt_lower or "view" in txt_lower:
+                clean_target = target_name.replace("Khám phá chi tiết giao diện ", "").split(":")[0].strip()
+                title_vi = f"Khám phá giao diện {clean_target}"
+                title_en = f"Explore {clean_target} Interface"
+                desc_vi = f"Giao diện phân hệ '{clean_target}' hiển thị toàn bộ các thông tin tổng quan, dữ liệu nghiệp vụ và các công cụ tương tác chính. Người dùng có thể quan sát tiến độ, kiểm tra các hạng mục và thực hiện các tác vụ chuyên môn tại đây."
+                desc_en = f"The '{clean_target}' interface presents an overview of core metrics, data items, and functional tools for users to track progress and complete workflows."
+                slide_vi = f"Giao diện {clean_target}: Theo dõi dữ liệu & công cụ nghiệp vụ."
+                slide_en = f"{clean_target} Interface: Overview and operational tools."
+                voice_vi = f"Chào mừng bạn đến với phân hệ {clean_target}. Tại giao diện này, hệ thống cung cấp đầy đủ các thông tin và công cụ cần thiết để bạn quản lý công việc và thao tác hiệu quả."
+                voice_en = f"Welcome to the {clean_target} module. Here you can explore all relevant data, tools, and options to manage your work effectively."
+            elif "menu" in txt_lower or "thanh điều hướng" in txt_lower or "sidebar" in txt_lower:
+                clean_name = target_name.replace("Mục ", "").replace(" trên Menu bên trái", "").replace(" trên thanh điều hướng", "").strip()
+                title_vi = f"Truy cập phân hệ {clean_name}"
+                title_en = f"Access {clean_name} Section"
+                desc_vi = f"Trên thanh điều hướng của hệ thống, nhấp vào mục '{clean_name}' để chuyển tới khu vực làm việc tương ứng."
+                desc_en = f"On the navigation bar, click on '{clean_name}' to access this workspace section."
+                slide_vi = f"Mở chức năng: {clean_name} trên thanh điều hướng."
+                slide_en = f"Open section: {clean_name}."
+                voice_vi = f"Tại thanh điều hướng, bạn nhấp vào mục {clean_name} để truy cập vào khu vực chức năng này."
+                voice_en = f"On the navigation bar, click on {clean_name} to enter this feature area."
             else:
-                title_vi = f"Nhấn vào {target_name}"
-                title_en = f"Click on {target_name}"
-                desc_vi = f"Di chuyển con trỏ chuột đến mục {target_name} trên giao diện và nhấn chuột trái."
-                desc_en = f"Move your cursor to the {target_name} element and click it."
-                slide_vi = f"Bấm vào mục: {target_name}"
-                slide_en = f"Click: {target_name}"
-                voice_vi = f"Bây giờ, bạn bấm vào mục {target_name} trên màn hình."
-                voice_en = f"Now, click on the {target_name} option on the screen."
+                clean_name = target_name.replace("Nút ", "").replace("Mục ", "").strip()
+                title_vi = f"Nhấp vào {clean_name}"
+                title_en = f"Click on {clean_name}"
+                desc_vi = f"Di chuyển con trỏ chuột đến '{clean_name}' trên giao diện và nhấn chuột trái để thực hiện tác vụ."
+                desc_en = f"Move your cursor to '{clean_name}' and click to perform this action."
+                slide_vi = f"Thao tác: {clean_name}."
+                slide_en = f"Action: {clean_name}."
+                voice_vi = f"Bây giờ, bạn nhấp vào mục {clean_name} trên màn hình để tiếp tục."
+                voice_en = f"Now, click on {clean_name} on the screen to proceed."
 
         else:
             title_vi = f"Thao tác trên {target_name}"
@@ -416,3 +406,180 @@ Chỉ xuất ra JSON, không thêm văn bản khác.
                     "label": f"Nhấn vào {el.text or 'nút'}"
                 })
         return steps
+
+    def plan_deep_directives(
+        self,
+        discovered_elements: List[Any],
+        goal: str,
+        user_notes: Optional[str] = None,
+        page_title: str = "",
+        page_url: str = ""
+    ) -> List[Dict[str, Any]]:
+        """
+        AI Planner linh hoạt 100% (Universal Dynamic Planner):
+        Dựa trên các phần tử DOM thực tế quét được trên màn hình, kết hợp với mục tiêu (goal)
+        và ghi chú (user_notes) của người dùng để lập kế hoạch chuỗi bước đi tối ưu.
+        Thích ứng với mọi website trong hệ sinh thái (LMS, Kho code, IDE, Workspace, Portal...).
+        """
+        # Chuẩn hóa danh sách phần tử
+        normalized_elements = []
+        for el in discovered_elements:
+            if hasattr(el, "model_dump"):
+                d = el.model_dump()
+            elif isinstance(el, dict):
+                d = el
+            else:
+                continue
+            name = d.get("name") or d.get("text", "")
+            if name and len(name.strip()) > 1:
+                normalized_elements.append({
+                    "name": name.strip(),
+                    "tag": d.get("tag", ""),
+                    "category": d.get("category", ""),
+                    "selector": d.get("selector", ""),
+                    "url_target": d.get("url_target")
+                })
+
+        if not self.client or not self.api_key:
+            return self._semantic_fallback_plan(normalized_elements, goal, user_notes)
+
+        compact_elements = normalized_elements[:45]
+        prompt = f"""
+Bạn là chuyên gia tự động hóa trình duyệt và kỹ sư thiết kế kịch bản hướng dẫn người dùng.
+Website đang thao tác: "{page_title}" ({page_url})
+Mục tiêu hướng dẫn của người dùng: "{goal}"
+Ghi chú nghiệp vụ / Yêu cầu chi tiết từ người dùng: "{user_notes or 'Không có ghi chú thêm'}"
+
+Danh sách các phần tử tương tác THỰC TẾ đang có trên giao diện website hiện tại:
+{json.dumps(compact_elements, ensure_ascii=False, indent=2)}
+
+Nhiệm vụ:
+Phân tích kỹ lưỡng mục tiêu và các ghi chú của người dùng để chọn ra chuỗi các phần tử CÓ THỰC trên giao diện này cần tương tác.
+- Nếu người dùng yêu cầu duyệt qua các chức năng / menu (ví dụ menu bên trái): Hãy chọn các mục menu có thật trên trang phù hợp với yêu cầu.
+- Nếu người dùng yêu cầu thực hiện một quy trình cụ thể (như tạo repo, chỉnh sửa, xem báo cáo, mở bài học): Hãy chọn tuần tự các bước hợp lý để hoàn thành quy trình đó.
+
+Yêu cầu xuất ra DUY NHẤT một mảng JSON các bước (tối đa 4 - 6 bước trọng tâm):
+[
+  {{
+    "target_name": "Tên text chính xác của phần tử trên màn hình",
+    "action_type": "click",
+    "selector": "selector gợi ý",
+    "purpose": "Mục đích thao tác hoặc nội dung muốn giới thiệu",
+    "open_view_after": true
+  }}
+]
+Chỉ trả về chuỗi JSON hợp lệ, không thêm văn bản giải thích.
+"""
+        try:
+            if GENAI_SDK_AVAILABLE and isinstance(self.client, genai.Client):
+                res = self.client.models.generate_content(
+                    model=self.model_name,
+                    contents=[prompt],
+                    config=types.GenerateContentConfig(response_mime_type="application/json"),
+                )
+                text = res.text
+            else:
+                model = legacy_genai.GenerativeModel(self.model_name)
+                res = model.generate_content([prompt])
+                text = res.text
+
+            cleaned = text.strip()
+            if cleaned.startswith("```json"):
+                cleaned = cleaned[7:]
+            if cleaned.startswith("```"):
+                cleaned = cleaned[3:]
+            if cleaned.endswith("```"):
+                cleaned = cleaned[:-3]
+            plan = json.loads(cleaned.strip())
+            if isinstance(plan, list) and len(plan) > 0:
+                return plan
+        except Exception as e:
+            console.print(f"[yellow]⚠️ Lỗi Gemini Planner ({e}), chuyển sang Semantic Fallback Planner...[/yellow]")
+
+        return self._semantic_fallback_plan(normalized_elements, goal, user_notes)
+
+    def _semantic_fallback_plan(
+        self,
+        discovered_elements: List[Dict[str, Any]],
+        goal: str,
+        user_notes: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Bộ lập kế hoạch ngữ nghĩa dự phòng (Universal Semantic Matcher):
+        Không hardcode! Tự động trích xuất các từ khóa từ yêu cầu và ghi chú của người dùng,
+        rồi so khớp động với các phần tử thực tế trên DOM.
+        """
+        combined = f"{goal} {user_notes or ''}".lower()
+        import re
+        quotes = re.findall(r'[\"“\'](.*?)[\"”\']', f"{goal} {user_notes or ''}")
+        extracted_terms = [q.strip().lower() for q in quotes if len(q.strip()) > 1]
+
+        # Tách các từ khóa có nghĩa từ prompt
+        words = [w for w in re.split(r'[,.\s;:()]+', combined) if len(w) > 2 and w not in ["đăng", "nhập", "sau", "đó", "hướng", "dẫn", "các", "từng", "mở", "xem", "cho", "vào", "một", "nhiều"]]
+
+        matched_elements = []
+        seen_names = set()
+
+        # 1. Khớp ưu tiên theo các từ khóa được trích xuất từ người dùng
+        for el in discovered_elements:
+            el_text = (el.get("name") or el.get("text") or "").strip()
+            if not el_text or len(el_text) < 2:
+                continue
+            low = el_text.lower()
+            if low in seen_names:
+                continue
+
+            # Ưu tiên khớp thực thể trong ngoặc kép
+            is_quote_match = any(t in low for t in extracted_terms)
+            # Khớp từ khóa người dùng nhắc tới
+            is_word_match = any(w in low for w in words)
+
+            if is_quote_match or is_word_match:
+                seen_names.add(low)
+                matched_elements.append({
+                    "target_name": el_text,
+                    "action_type": "click",
+                    "selector": el.get("selector", f"a:has-text('{el_text}')"),
+                    "purpose": f"Khám phá phân hệ {el_text}",
+                    "open_view_after": True,
+                    "priority": 1 if is_quote_match else 2
+                })
+
+        matched_elements.sort(key=lambda x: x.get("priority", 3))
+
+        # 2. Nếu chưa đủ bước hoặc người dùng muốn duyệt navigation/sidebar
+        if len(matched_elements) < 4:
+            for el in discovered_elements:
+                el_text = (el.get("name") or el.get("text") or "").strip()
+                low = el_text.lower()
+                if low in seen_names or len(el_text) < 2:
+                    continue
+                # Nhận diện phần tử điều hướng
+                cat = el.get("category", "")
+                if "menu" in cat.lower() or "sidebar" in cat.lower() or "điều hướng" in cat.lower():
+                    seen_names.add(low)
+                    matched_elements.append({
+                        "target_name": el_text,
+                        "action_type": "click",
+                        "selector": el.get("selector", f"a:has-text('{el_text}')"),
+                        "purpose": f"Truy cập chức năng {el_text}",
+                        "open_view_after": True,
+                        "priority": 3
+                    })
+                    if len(matched_elements) >= 6:
+                        break
+
+        # 3. Fallback lấy các phần tử đầu tiên nếu chưa có
+        if not matched_elements:
+            for el in discovered_elements[:4]:
+                el_text = (el.get("name") or el.get("text") or "").strip()
+                if el_text:
+                    matched_elements.append({
+                        "target_name": el_text,
+                        "action_type": "click",
+                        "selector": el.get("selector", ""),
+                        "purpose": f"Thao tác trên {el_text}",
+                        "open_view_after": True
+                    })
+
+        return matched_elements[:6]

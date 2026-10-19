@@ -4,6 +4,7 @@ Giao diện trực quan cao cấp, Widescreen Full-Width (không khoảng trắn
 sử dụng chuẩn Typography Roboto, Custom Video Player tự chế và nút ẩn/hiện mật khẩu.
 """
 import os
+import shutil
 import json
 import asyncio
 from pathlib import Path
@@ -145,6 +146,305 @@ async def get_latest_recon():
     return {"message": "Chưa có báo cáo khảo sát nào."}
 
 
+def _scan_and_index_guides() -> List[Dict[str, Any]]:
+    guides_dir = settings.output_dir / "guides"
+    guides_dir.mkdir(parents=True, exist_ok=True)
+    docs_dir = settings.output_dir / "documents"
+    videos_dir = settings.output_dir / "videos"
+    slides_dir = settings.output_dir / "slides"
+
+    # 1. Tự động phục hồi metadata cho các phiên chạy trước từ file Markdown (.md)
+    import re, datetime
+    if docs_dir.exists():
+        for md_file in docs_dir.glob("*.md"):
+            m = re.search(r"guide_(\d+)", md_file.name)
+            if not m:
+                continue
+            gid = f"guide_{m.group(1)}"
+            g_json = guides_dir / f"{gid}.json"
+            if not g_json.exists():
+                try:
+                    content = md_file.read_text(encoding="utf-8")
+                    title_m = re.search(r"^#\s*(.+)$", content, re.MULTILINE)
+                    title = title_m.group(1).strip() if title_m else md_file.stem
+                    url_m = re.search(r"Hệ thống\*\*:\s*`([^`]+)`", content)
+                    url = url_m.group(1) if url_m else "https://pythaverse.space/"
+                    time_m = re.search(r"Thời gian\*\*:\s*([^\n]+)", content)
+                    created_at = time_m.group(1).strip() if time_m else datetime.datetime.fromtimestamp(md_file.stat().st_mtime).strftime("%Y-%m-%d %H:%M")
+
+                    goal = title.replace("Hướng Dẫn", "").replace("Hướng dẫn:", "").strip()
+                    notes = ""
+                    if "1792414806" in gid:
+                        goal = "Giới thiệu hệ thống Student Workspace và các chức năng"
+                        notes = "Đăng nhập, sau đó truy cập từng chức năng ở bên Menu bên trái (ví dụ Dashboard, My Courses, ...), mở chức năng đó ra và giới thiệu chức năng, ý nghĩa của chức năng đó."
+
+                    step_matches = re.findall(r"### Bước (\d+):\s*([^\n]+)\n\n(.*?)(?=\n### Bước|\Z)", content, re.DOTALL)
+                    steps_data = []
+                    for s_num, s_title, s_body in step_matches:
+                        clean_body = s_body.split("![")[0].strip()
+                        img_m = re.search(r"!\[.*?\]\((.*?)\)", s_body)
+                        img_rel = img_m.group(1) if img_m else f"annotated_images/step_{int(s_num):02d}_highlighted.png"
+                        if img_rel.startswith("../"):
+                            img_rel = img_rel.replace("../", "")
+                        steps_data.append({
+                            "step_number": int(s_num),
+                            "title": s_title.strip(),
+                            "description": clean_body,
+                            "image": img_rel
+                        })
+
+                    auto_guide_dict = {
+                        "guide_id": gid,
+                        "title": {"vi": title, "en": title},
+                        "summary": {"vi": goal, "en": goal},
+                        "user_goal": goal,
+                        "user_notes": notes,
+                        "target_url": url,
+                        "created_at": created_at,
+                        "total_steps": len(steps_data),
+                        "steps": steps_data,
+                    }
+                    g_json.write_text(json.dumps(auto_guide_dict, ensure_ascii=False, indent=2), encoding="utf-8")
+                except Exception:
+                    pass
+
+    # 2. Đọc toàn bộ guides/*.json và kết nối các file vật lý
+    guide_list = []
+    if guides_dir.exists():
+        for f in guides_dir.glob("*.json"):
+            try:
+                with open(f, "r", encoding="utf-8") as jf:
+                    data = json.load(jf)
+                gid = data.get("guide_id") or f.stem
+
+                # File Video
+                video_file = None
+                if videos_dir.exists():
+                    for vf in sorted(videos_dir.glob(f"*{gid}*.mp4"), key=lambda x: x.stat().st_mtime, reverse=True):
+                        video_file = {
+                            "name": vf.name,
+                            "size_bytes": vf.stat().st_size,
+                            "url": f"/static/output/videos/{vf.name}",
+                            "rel_path": f"videos/{vf.name}"
+                        }
+                        break
+
+                # File Word
+                docx_file = None
+                if docs_dir.exists():
+                    for df in sorted(docs_dir.glob(f"*{gid}*.docx"), key=lambda x: x.stat().st_mtime, reverse=True):
+                        docx_file = {
+                            "name": df.name,
+                            "size_bytes": df.stat().st_size,
+                            "url": f"/static/output/documents/{df.name}",
+                            "rel_path": f"documents/{df.name}"
+                        }
+                        break
+
+                # File PowerPoint
+                pptx_file = None
+                if slides_dir.exists():
+                    for sf in sorted(slides_dir.glob(f"*{gid}*.pptx"), key=lambda x: x.stat().st_mtime, reverse=True):
+                        pptx_file = {
+                            "name": sf.name,
+                            "size_bytes": sf.stat().st_size,
+                            "url": f"/static/output/slides/{sf.name}",
+                            "rel_path": f"slides/{sf.name}"
+                        }
+                        break
+
+                # File Markdown
+                md_file = None
+                if docs_dir.exists():
+                    for mf in sorted(docs_dir.glob(f"*{gid}*.md"), key=lambda x: x.stat().st_mtime, reverse=True):
+                        md_file = {
+                            "name": mf.name,
+                            "size_bytes": mf.stat().st_size,
+                            "url": f"/static/output/documents/{mf.name}",
+                            "rel_path": f"documents/{mf.name}"
+                        }
+                        break
+
+                title_val = data.get("title")
+                title_str = title_val.get("vi") if isinstance(title_val, dict) else str(title_val or gid)
+
+                # Format steps to be consistent
+                raw_steps = data.get("steps") or []
+                formatted_steps = []
+                for s in raw_steps:
+                    if isinstance(s, dict):
+                        ai_c = s.get("ai_content") or {}
+                        t_obj = ai_c.get("title") if isinstance(ai_c, dict) else None
+                        t_text = t_obj.get("vi") if isinstance(t_obj, dict) else s.get("title", f"Bước {s.get('step_number', 1)}")
+
+                        d_obj = ai_c.get("description") if isinstance(ai_c, dict) else None
+                        d_text = d_obj.get("vi") if isinstance(d_obj, dict) else s.get("description", "")
+
+                        v_obj = ai_c.get("voiceover_script") if isinstance(ai_c, dict) else None
+                        v_text = v_obj.get("vi") if isinstance(v_obj, dict) else s.get("voiceover", "")
+
+                        img_path = s.get("annotated_screenshot_path") or s.get("image") or ""
+                        img_name = Path(img_path).name if img_path else ""
+                        img_url = f"/static/output/annotated_images/{img_name}" if img_name else ""
+
+                        formatted_steps.append({
+                            "step_number": s.get("step_number", len(formatted_steps) + 1),
+                            "title": t_text,
+                            "description": d_text,
+                            "voiceover": v_text,
+                            "image_url": img_url
+                        })
+
+                sort_ts = f.stat().st_mtime
+
+                guide_list.append({
+                    "guide_id": gid,
+                    "title": title_str,
+                    "user_goal": data.get("user_goal") or data.get("summary", {}).get("vi") if isinstance(data.get("summary"), dict) else (data.get("user_goal") or title_str),
+                    "user_notes": data.get("user_notes") or "",
+                    "target_url": data.get("target_url") or "",
+                    "created_at": data.get("created_at") or "",
+                    "total_steps": len(formatted_steps) or data.get("total_steps", 0),
+                    "video": video_file,
+                    "docx": docx_file,
+                    "pptx": pptx_file,
+                    "md": md_file,
+                    "steps": formatted_steps,
+                    "sort_ts": sort_ts,
+                })
+            except Exception:
+                pass
+
+    guide_list.sort(key=lambda x: x.get("sort_ts", 0), reverse=True)
+    return guide_list
+
+
+@app.get("/api/guides")
+async def get_guides_endpoint():
+    """Trả về danh sách các phiên hướng dẫn đã sản xuất cùng metadata chi tiết"""
+    return {"guides": _scan_and_index_guides()}
+
+
+@app.get("/api/guides/{guide_id}")
+async def get_single_guide_endpoint(guide_id: str):
+    """Trả về chi tiết của một phiên hướng dẫn cụ thể"""
+    for g in _scan_and_index_guides():
+        if g["guide_id"] == guide_id:
+            return g
+    raise HTTPException(status_code=404, detail="Không tìm thấy phiên hướng dẫn")
+
+
+@app.delete("/api/guides/{guide_id}")
+async def delete_guide_endpoint(guide_id: str):
+    """Xóa vĩnh viễn toàn bộ một phiên hướng dẫn và các file thành phẩm liên quan trên đĩa"""
+    guides_dir = settings.output_dir / "guides"
+    docs_dir = settings.output_dir / "documents"
+    videos_dir = settings.output_dir / "videos"
+    slides_dir = settings.output_dir / "slides"
+
+    deleted_files = []
+    # 1. Delete guide json
+    g_json = guides_dir / f"{guide_id}.json"
+    if g_json.exists():
+        g_json.unlink()
+        deleted_files.append(g_json.name)
+
+    # 2. Delete videos matching guide_id
+    if videos_dir.exists():
+        for f in list(videos_dir.glob(f"*{guide_id}*")):
+            f.unlink()
+            deleted_files.append(f.name)
+
+    # 3. Delete documents matching guide_id
+    if docs_dir.exists():
+        for f in list(docs_dir.glob(f"*{guide_id}*")):
+            f.unlink()
+            deleted_files.append(f.name)
+
+    # 4. Delete slides matching guide_id
+    if slides_dir.exists():
+        for f in list(slides_dir.glob(f"*{guide_id}*")):
+            f.unlink()
+            deleted_files.append(f.name)
+
+    return {"message": f"Đã xóa vĩnh viễn {len(deleted_files)} tệp thành phẩm của {guide_id}", "deleted": deleted_files}
+
+
+@app.delete("/api/artifacts/file")
+async def delete_single_file_endpoint(rel_path: str):
+    """Xóa vĩnh viễn một tệp cụ thể khỏi thư mục output"""
+    target = (settings.output_dir / rel_path).resolve()
+    base = settings.output_dir.resolve()
+    try:
+        target.relative_to(base)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Đường dẫn không an toàn")
+
+    if target.exists() and target.is_file():
+        target.unlink()
+        return {"message": f"Đã xóa vĩnh viễn file {target.name}", "file": target.name}
+    raise HTTPException(status_code=404, detail="File không tồn tại")
+
+
+@app.get("/api/system/health")
+async def get_system_health():
+    """Kiểm tra và báo cáo chẩn đoán trạng thái hoạt động của toàn bộ hệ thống"""
+    # 1. Gemini
+    has_gemini_key = bool(settings.gemini_api_key and len(settings.gemini_api_key) > 5)
+    model = settings.gemini_model
+    quota_desc = "500 lượt/ngày (Miễn phí)" if "lite" in model else "20 lượt/ngày"
+
+    # 2. VieNeu-TTS
+    vieneu_ready = False
+    try:
+        from src.generators.video_gen import VieNeuTTSProvider
+        vieneu_ready = VieNeuTTSProvider.get_engine() is not None
+    except Exception:
+        vieneu_ready = False
+
+    # 3. FFmpeg
+    ffmpeg_ready = shutil.which("ffmpeg") is not None
+
+    # 4. Storage size
+    total_size = 0
+    total_files = 0
+    for root, _, files in os.walk(settings.output_dir):
+        for f in files:
+            p = Path(root) / f
+            total_size += p.stat().st_size
+            total_files += 1
+
+    return {
+        "gemini": {
+            "has_key": has_gemini_key,
+            "model": model,
+            "quota": quota_desc,
+            "status": "Sẵn sàng (Đã kết nối API)" if has_gemini_key else "Chưa có Key (Dùng Offline Fallback)",
+        },
+        "vieneu": {
+            "ready": vieneu_ready,
+            "engine": settings.tts_engine_vi,
+            "voice": settings.vieneu_voice,
+            "mode": settings.vieneu_mode,
+            "status": "Sẵn sàng (Thần kinh on-device)" if vieneu_ready else "Đang dùng Microsoft Edge-TTS dự phòng",
+        },
+        "ffmpeg": {
+            "ready": ffmpeg_ready,
+            "status": "Sẵn sàng (Đã kết nối FFmpeg)" if ffmpeg_ready else "Chưa tìm thấy FFmpeg",
+        },
+        "browser": {
+            "ready": True,
+            "engine": "Playwright Chromium / MS Edge",
+            "viewport": f"{settings.viewport_width}x{settings.viewport_height}",
+        },
+        "storage": {
+            "total_files": total_files,
+            "size_mb": round(total_size / (1024 * 1024), 1),
+            "env_path": str(settings.base_dir / ".env"),
+        }
+    }
+
+
 @app.get("/api/artifacts")
 async def get_artifacts():
     docs_dir = settings.output_dir / "documents"
@@ -206,9 +506,12 @@ async def run_auto_endpoint(payload: AutoPilotPayload):
                 user_notes=payload.user_notes,
                 enable_two_pass=payload.enable_two_pass,
             )
+            gb = result.get("guidebook")
+            gid = getattr(gb, "guide_id", None) if gb else None
             pipeline_status["last_result"] = {
                 "elapsed_seconds": result["elapsed_seconds"],
                 "artifacts": result["artifacts"],
+                "guide_id": gid,
             }
             pipeline_status["current_step"] = "Hoàn tất thành công toàn bộ tài liệu & video chi tiết!"
         except Exception as e:
@@ -238,9 +541,12 @@ async def run_recorder_endpoint(payload: RecorderPayload):
                 languages=payload.languages,
                 generate_video=payload.generate_video
             )
+            gb = result.get("guidebook")
+            gid = getattr(gb, "guide_id", None) if gb else None
             pipeline_status["last_result"] = {
                 "elapsed_seconds": result["elapsed_seconds"],
                 "artifacts": result["artifacts"],
+                "guide_id": gid,
             }
             pipeline_status["current_step"] = "Hoàn tất ghi và tạo tài liệu thành công!"
         except Exception as e:
@@ -297,9 +603,12 @@ async def run_scenario_endpoint(payload: ScenarioPayload):
                 generate_video=payload.generate_video,
                 cleanup_temp=False,
             )
+            gb = result.get("guidebook")
+            gid = getattr(gb, "guide_id", None) if gb else None
             pipeline_status["last_result"] = {
                 "elapsed_seconds": result["elapsed_seconds"],
                 "artifacts": result["artifacts"],
+                "guide_id": gid,
             }
             pipeline_status["current_step"] = "Hoàn tất thành công!"
         except Exception as e:
@@ -567,7 +876,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
               <label class="text-xs font-bold text-slate-700 uppercase">4. Ghi Chú & Hướng Dẫn Bổ Sung (Tùy Chỉnh Nghiệp Vụ)</label>
               <span class="text-[11px] text-indigo-600 font-semibold">Tự động lồng vào lời thoại & video</span>
             </div>
-            <textarea id="auto-notes" rows="2" placeholder="Ví dụ: Sau khi đăng nhập, hãy hướng dẫn vào xem khóa học Leanbot ASP và xem tài liệu bài 1..." class="w-full text-xs px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-rose-500 focus:outline-none transition"></textarea>
+            <textarea id="auto-notes" rows="2" placeholder="Ví dụ: Sau khi đăng nhập, hãy truy cập các mục trên thanh Menu bên trái (Dashboard, My Courses, Không gian làm việc...), mở từng chức năng ra và giới thiệu chức năng, ý nghĩa của chức năng đó..." class="w-full text-xs px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-rose-500 focus:outline-none transition"></textarea>
           </div>
 
           <!-- Model & Two-Pass Options -->
@@ -704,125 +1013,57 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     </section>
 
     <!-- ============================================================== -->
-    <!-- TAB 3: THƯ VIỆN THÀNH PHẨM (CUSTOM HANDMADE VIDEO PLAYER) -->
+    <!-- TAB 3: THƯ VIỆN THÀNH PHẨM & LỊCH SỬ HƯỚNG DẪN (REDESIGNED) -->
     <!-- ============================================================== -->
     <section id="tab-artifacts" class="hidden space-y-6">
 
-      <div class="flex items-center justify-between">
+      <!-- Header Row with Search & Stats -->
+      <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
         <div>
-          <h2 class="text-xl font-bold text-slate-900">Thư Viện Sản Phẩm Đầu Ra</h2>
-          <p class="text-xs text-slate-500">Xem video thuyết minh với trình phát tùy chỉnh, xem trước slide 16:9 và tải Word (.docx).</p>
+          <div class="flex items-center gap-2">
+            <h2 class="text-xl font-bold text-slate-900">Thư Viện Sản Phẩm Đầu Ra</h2>
+            <span id="guide-count-badge" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200">0 phiên hướng dẫn</span>
+          </div>
+          <p class="text-xs text-slate-500 mt-0.5">Quản lý trọn bộ tài liệu theo từng phiên: đối chiếu yêu cầu/ghi chú ban đầu, xem video thuyết minh, tải Word/Slide và quản lý xóa vĩnh viễn.</p>
         </div>
-        <button onclick="checkArtifacts()" class="px-4 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-xl text-xs font-semibold shadow-xs transition flex items-center gap-1.5 cursor-pointer">
-          <i data-lucide="refresh-cw" class="w-4 h-4"></i> Làm Mới Dữ Liệu
-        </button>
+        <div class="flex items-center gap-2 w-full sm:w-auto">
+          <div class="relative flex-1 sm:w-64">
+            <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2"></i>
+            <input type="text" id="guide-search-input" oninput="filterGuides(this.value)" placeholder="Tìm kiếm phiên hướng dẫn..." class="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500">
+          </div>
+          <button onclick="loadGuides()" class="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold shadow-xs transition flex items-center gap-1.5 cursor-pointer shrink-0">
+            <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Làm Mới
+          </button>
+        </div>
       </div>
 
+      <!-- Main Showcase Layout: 12 Cols Grid -->
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
 
-        <!-- LEFT: CUSTOM HANDMADE VIDEO PLAYER (7 COLS) -->
-        <div class="lg:col-span-7 bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-4">
-          
-          <div class="flex items-center justify-between">
-            <h3 class="font-bold text-slate-900 text-sm flex items-center gap-2">
-              <i data-lucide="film" class="w-4 h-4 text-rose-600"></i> Video Hướng Dẫn Thuyết Minh AI
-            </h3>
-            <div id="video-select-group" class="flex gap-1.5"></div>
+        <!-- LEFT (4 COLS): SESSIONS DIRECTORY -->
+        <div class="lg:col-span-4 bg-white border border-slate-200 rounded-2xl p-4 shadow-xs space-y-3">
+          <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+            <span class="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+              <i data-lucide="folder-clock" class="w-4 h-4 text-rose-600"></i> Lịch Sử Các Phiên Tạo
+            </span>
+            <span class="text-[11px] text-slate-400 font-mono" id="guide-dir-count">0 mục</span>
           </div>
 
-          <!-- THE CUSTOM VIDEO PLAYER CONTAINER -->
-          <div id="player-container" class="relative group aspect-video bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 shadow-xl select-none flex items-center justify-center">
-            
-            <!-- Native Video Element (controls disabled) -->
-            <video id="custom-video" class="w-full h-full object-contain cursor-pointer" preload="metadata" playsinline></video>
-
-            <!-- Big Center Play / Pause Icon Button -->
-            <div id="big-play-btn" onclick="togglePlayPause()" class="absolute inset-0 flex items-center justify-center bg-black/25 backdrop-blur-[1px] transition-all cursor-pointer">
-              <div class="w-16 h-16 rounded-full bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center shadow-2xl transform hover:scale-110 transition">
-                <i data-lucide="play" class="w-8 h-8 fill-white ml-1" id="big-play-icon"></i>
-              </div>
+          <div id="guides-list-container" class="space-y-2.5 max-h-[780px] overflow-y-auto pr-1">
+            <div class="p-6 text-center text-xs text-slate-400 space-y-2">
+              <i data-lucide="loader-2" class="w-6 h-6 animate-spin mx-auto text-slate-400"></i>
+              <p>Đang tải danh sách thành phẩm...</p>
             </div>
-
-            <!-- Custom Floating Control Bar (Show on hover) -->
-            <div id="player-controls" class="absolute bottom-0 inset-x-0 bg-gradient-to-t from-slate-950/95 via-slate-950/75 to-transparent px-4 pb-3 pt-8 flex flex-col gap-2 transition-opacity opacity-0 group-hover:opacity-100">
-              
-              <!-- Scrub Timeline Slider -->
-              <div class="relative w-full h-1.5 hover:h-2.5 bg-slate-700/60 rounded-full cursor-pointer transition-all flex items-center" id="scrubber-bar">
-                <div id="scrubber-buffer" class="absolute left-0 top-0 bottom-0 bg-slate-600/60 rounded-full" style="width: 0%"></div>
-                <div id="scrubber-progress" class="absolute left-0 top-0 bottom-0 bg-rose-500 rounded-full flex items-center justify-end" style="width: 0%">
-                  <div class="w-3 h-3 bg-white rounded-full shadow-md"></div>
-                </div>
-              </div>
-
-              <!-- Controls Row -->
-              <div class="flex items-center justify-between text-white text-xs pt-0.5">
-                
-                <div class="flex items-center gap-3">
-                  <!-- Play / Pause Button -->
-                  <button onclick="togglePlayPause()" class="p-1 hover:text-rose-400 transition" title="Phát / Tạm dừng (Space)">
-                    <i data-lucide="play" class="w-4 h-4 fill-current" id="ctrl-play-icon"></i>
-                  </button>
-
-                  <!-- Volume Button & Slider -->
-                  <div class="flex items-center gap-1.5">
-                    <button onclick="toggleMute()" class="p-1 hover:text-rose-400 transition" title="Bật / Tắt âm">
-                      <i data-lucide="volume-2" class="w-4 h-4" id="ctrl-vol-icon"></i>
-                    </button>
-                    <input type="range" id="ctrl-vol-slider" min="0" max="1" step="0.05" value="1" oninput="setVideoVolume(this.value)" class="w-16 h-1 accent-rose-500 cursor-pointer">
-                  </div>
-
-                  <!-- Time Display -->
-                  <span class="font-mono text-[11px] text-slate-300" id="ctrl-time-display">00:00 / 00:00</span>
-                </div>
-
-                <div class="flex items-center gap-2.5">
-                  <!-- Playback Speed Button -->
-                  <div class="relative">
-                    <button onclick="toggleSpeedMenu()" id="ctrl-speed-btn" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[11px] font-mono font-semibold transition">1.0x</button>
-                    <div id="ctrl-speed-menu" class="hidden absolute bottom-7 right-0 bg-slate-900 border border-slate-700 rounded-lg p-1 text-[11px] font-mono shadow-xl flex flex-col gap-0.5 z-30">
-                      <button onclick="setVideoSpeed(0.75)" class="px-2.5 py-1 text-left hover:bg-rose-600 rounded">0.75x</button>
-                      <button onclick="setVideoSpeed(1.0)" class="px-2.5 py-1 text-left hover:bg-rose-600 rounded">1.0x</button>
-                      <button onclick="setVideoSpeed(1.25)" class="px-2.5 py-1 text-left hover:bg-rose-600 rounded">1.25x</button>
-                      <button onclick="setVideoSpeed(1.5)" class="px-2.5 py-1 text-left hover:bg-rose-600 rounded">1.5x</button>
-                    </div>
-                  </div>
-
-                  <!-- Fullscreen Button -->
-                  <button onclick="toggleFullscreen()" class="p-1 hover:text-rose-400 transition" title="Toàn màn hình (F)">
-                    <i data-lucide="maximize" class="w-4 h-4"></i>
-                  </button>
-                </div>
-
-              </div>
-
-            </div>
-
           </div>
-
-          <div id="video-download-btn-area"></div>
         </div>
 
-        <!-- RIGHT: DOCUMENTS, SLIDES & HIGHLIGHT GALLERY (5 COLS) -->
-        <div class="lg:col-span-5 space-y-4">
-          
-          <!-- DOCX & PPTX Files List -->
-          <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-3">
-            <h3 class="font-bold text-slate-900 text-sm flex items-center gap-2">
-              <i data-lucide="file-check" class="w-4 h-4 text-rose-600"></i> Tài Liệu Văn Bản & Slides 16:9
-            </h3>
-            <div id="doc-files-list" class="space-y-2">
-              <p class="text-xs text-slate-400">Đang quét thư mục thành phẩm...</p>
-            </div>
+        <!-- RIGHT (8 COLS): ACTIVE GUIDE SHOWCASE -->
+        <div class="lg:col-span-8 space-y-5" id="guide-detail-container">
+          <div class="bg-white border border-slate-200 rounded-2xl p-12 text-center text-slate-400 space-y-3 shadow-xs">
+            <i data-lucide="sparkles" class="w-10 h-10 mx-auto text-rose-300"></i>
+            <h3 class="font-bold text-base text-slate-700">Chọn một phiên hướng dẫn ở danh mục bên trái</h3>
+            <p class="text-xs max-w-md mx-auto">Tại đây sẽ hiển thị chi tiết yêu cầu ban đầu, ghi chú nghiệp vụ bạn đã đưa vào, video thuyết minh và trọn bộ file Word / Slide 16:9.</p>
           </div>
-
-          <!-- Highlighted Screenshots Gallery -->
-          <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-3">
-            <h3 class="font-bold text-slate-900 text-sm flex items-center gap-2">
-              <i data-lucide="image" class="w-4 h-4 text-rose-600"></i> Ảnh Minh Họa Từng Bước (Spotlight)
-            </h3>
-            <div id="annotated-gallery" class="grid grid-cols-2 gap-2.5 max-h-[280px] overflow-y-auto pr-1"></div>
-          </div>
-
         </div>
 
       </div>
@@ -865,139 +1106,243 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     </section>
 
     <!-- ============================================================== -->
-    <!-- TAB 5: CÀI ĐẶT HỆ THỐNG -->
+    <!-- TAB 5: CÀI ĐẶT HỆ THỐNG & TRUNG TÂM CHẨN ĐOÁN (REDESIGNED) -->
     <!-- ============================================================== -->
-    <section id="tab-settings" class="hidden max-w-2xl space-y-6">
-      <div class="bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-5">
-        <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
-          <i data-lucide="sliders" class="w-4 h-4 text-rose-600"></i> Cấu Hình Hệ Thống & Trực Quan
-        </h2>
+    <section id="tab-settings" class="hidden space-y-6">
 
-        <!-- Google Gemini API Key with Eye Toggle & .env Path -->
-        <div class="space-y-1.5">
-          <div class="flex items-center justify-between">
-            <label class="text-xs font-bold text-slate-700 uppercase">Google Gemini API Key</label>
-            <span class="text-[11px] text-emerald-700 font-semibold font-mono flex items-center gap-1">
-              <i data-lucide="file-check" class="w-3.5 h-3.5"></i> Lưu vĩnh viễn trong file .env
-            </span>
-          </div>
-          <div class="relative">
-            <input type="password" id="cfg-gemini-key" placeholder="AIzaSy..." class="w-full text-sm px-4 py-2.5 pr-10 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-rose-500 focus:outline-none font-mono">
-            <button type="button" onclick="togglePasswordVisibility('cfg-gemini-key', 'key-eye-icon')" class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-700 transition cursor-pointer" title="Xem / Ẩn Key">
-              <i data-lucide="eye" class="w-4 h-4" id="key-eye-icon"></i>
-            </button>
-          </div>
-          <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1 text-[11px] text-slate-500">
-            <span>Lấy key miễn phí tại <a href="https://aistudio.google.com/" target="_blank" class="text-rose-600 underline font-semibold">aistudio.google.com</a></span>
-            <span class="font-mono text-[10px] text-slate-400" id="cfg-env-path">Đang tải vị trí lưu...</span>
-          </div>
-        </div>
-
-        <!-- Gemini Model Dropdown -->
+      <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white border border-slate-200 rounded-2xl p-5 shadow-xs">
         <div>
-          <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Mô Hình Gemini AI (Mặc định)</label>
-          <select id="cfg-gemini-model" class="w-full text-xs px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none">
-            <option value="gemini-3.5-flash-lite">⚡ Gemini 3.5 Flash Lite (500 RPD Miễn phí - Khuyên dùng)</option>
-            <option value="gemini-3.1-flash-lite">⚡ Gemini 3.1 Flash Lite (500 RPD Miễn phí)</option>
-            <option value="gemini-3.8-flash">🧠 Gemini 3.8 Flash (Thông minh, 20 RPD)</option>
-            <option value="gemini-3.7-flash">Gemini 3.7 Flash (20 RPD)</option>
-            <option value="gemini-3.5-flash">Gemini 3.5 Flash (20 RPD)</option>
-            <option value="gemini-2.5-flash">Gemini 2.5 Flash (20 RPD)</option>
-          </select>
+          <h2 class="text-xl font-bold text-slate-900">Cấu Hình Hệ Thống & Trung Tâm Chẩn Đoán</h2>
+          <p class="text-xs text-slate-500 mt-0.5">Quản lý API Key, chọn mô hình AI, tinh chỉnh giọng nói VieNeu-TTS và giám sát trạng thái phần cứng/phần mềm.</p>
         </div>
-
-        <!-- Vietnamese Voice Engine Selector (VieNeu-TTS / Edge-TTS) -->
-        <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
-          <div class="text-xs font-bold text-slate-800 flex items-center justify-between">
-            <span class="flex items-center gap-1.5"><i data-lucide="mic" class="w-4 h-4 text-rose-600"></i> Công Cụ Giọng Nói Tiếng Việt (TTS)</span>
-            <span class="text-[10px] bg-rose-50 text-rose-700 border border-rose-200 px-1.5 py-0.5 rounded font-mono">VieNeu-TTS Integrated</span>
-          </div>
-
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <label class="block text-[11px] font-semibold text-slate-600 mb-1">Engine Giọng Đọc</label>
-              <select id="cfg-tts-engine" onchange="toggleTtsOptions(this.value)" class="w-full text-xs px-3 py-2 bg-white border border-slate-200 rounded-lg focus:outline-none">
-                <option value="vieneu">🦜 VieNeu-TTS (pnnbao97/VieNeu-TTS)</option>
-                <option value="edge-tts">⚡ Microsoft Edge-TTS</option>
-              </select>
-            </div>
-
-            <div id="cfg-vieneu-box">
-              <label class="block text-[11px] font-semibold text-slate-600 mb-1">Giọng Đọc VieNeu-TTS</label>
-              <div class="flex items-center gap-2">
-                <select id="cfg-vieneu-voice" class="flex-1 text-xs px-3 py-2 bg-white border border-slate-200 rounded-lg focus:outline-none">
-                  <option value="Ái Hân" selected>Ái Hân (Nữ · Nam · Tin tức truyền cảm - Khuyên dùng)</option>
-                  <option value="Mỹ Duyên">Mỹ Duyên (Nữ · Bắc · Đọc truyện ngọt ngào)</option>
-                  <option value="Mai Anh">Mai Anh (Nữ · Bắc · Tự nhiên, rõ ràng)</option>
-                  <option value="Trúc Ly">Trúc Ly (Nữ · Bắc · Phong cách tự nhiên)</option>
-                  <option value="Xuân Tiên">Xuân Tiên (Nữ · Bắc · Tin tức chuẩn)</option>
-                  <option value="Đức Trí">Đức Trí (Nam · Bắc · Trầm ấm, truyền cảm)</option>
-                  <option value="Hữu Quân">Hữu Quân (Nam · Bắc · Tin tức)</option>
-                  <option value="Minh Quân">Minh Quân (Nam · Bắc · Tự nhiên)</option>
-                  <option value="Mạnh Dũng">Mạnh Dũng (Nam · Bắc · Rõ ràng, dứt khoát)</option>
-                  <option value="Anh Khôi">Anh Khôi (Nam · Bắc · Kể chuyện)</option>
-                  <option value="Adam">Adam (Nam · Nam · Tự nhiên)</option>
-                </select>
-                <button type="button" onclick="previewSelectedVoice('vieneu')" class="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer shrink-0" title="Bấm để nghe thử giọng này">
-                  <i data-lucide="play" class="w-3.5 h-3.5 fill-current"></i> Nghe thử
-                </button>
-              </div>
-            </div>
-
-            <div id="cfg-edgetts-box" class="hidden">
-              <label class="block text-[11px] font-semibold text-slate-600 mb-1">Giọng Đọc Edge-TTS</label>
-              <div class="flex items-center gap-2">
-                <select id="cfg-voice-vi" class="flex-1 text-xs px-3 py-2 bg-white border border-slate-200 rounded-lg focus:outline-none">
-                  <option value="vi-VN-HoaiMyNeural">vi-VN-HoaiMyNeural (Nữ ấm áp)</option>
-                  <option value="vi-VN-NamMinhNeural">vi-VN-NamMinhNeural (Nam truyền cảm)</option>
-                </select>
-                <button type="button" onclick="previewSelectedVoice('edge-tts')" class="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer shrink-0" title="Bấm để nghe thử giọng này">
-                  <i data-lucide="play" class="w-3.5 h-3.5 fill-current"></i> Nghe thử
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- English Voice -->
-        <div>
-          <label class="block text-xs font-bold text-slate-700 uppercase mb-1">English Voice (Thuyết minh tiếng Anh)</label>
-          <div class="flex items-center gap-2">
-            <select id="cfg-voice-en" class="flex-1 text-sm px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl">
-              <option value="en-US-AriaNeural">en-US-AriaNeural (Female)</option>
-              <option value="en-US-GuyNeural">en-US-GuyNeural (Male)</option>
-            </select>
-            <button type="button" onclick="previewSelectedVoice('en')" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer shrink-0" title="Listen sample">
-              <i data-lucide="play" class="w-3.5 h-3.5 fill-current"></i> Listen
-            </button>
-          </div>
-        </div>
-
-        <div>
-          <div class="flex items-center justify-between mb-1">
-            <label class="text-xs font-bold text-slate-700 uppercase">Độ Mờ Hiệu Ứng Spotlight (Làm tối nền xung quanh)</label>
-            <span id="cfg-spotlight-val" class="text-xs font-bold text-rose-600">35%</span>
-          </div>
-          <input type="range" id="cfg-spotlight" min="0" max="0.8" step="0.05" value="0.35" class="w-full accent-rose-600">
-        </div>
-
-        <button onclick="saveSettings()" class="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-sm transition cursor-pointer flex items-center justify-center gap-2">
-          <i data-lucide="save" class="w-4 h-4"></i> Lưu Vĩnh Viễn Vào File .env
+        <button onclick="loadSystemHealth()" class="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-semibold shadow-xs transition flex items-center gap-1.5 cursor-pointer shrink-0">
+          <i data-lucide="activity" class="w-4 h-4 text-emerald-400"></i> Kiểm Tra Trạng Thái
         </button>
       </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+        <!-- LEFT (7 COLS): CONFIGURATION FORM -->
+        <div class="lg:col-span-7 bg-white border border-slate-200 rounded-2xl p-6 shadow-xs space-y-5">
+          <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2 border-b border-slate-100 pb-3">
+            <i data-lucide="sliders" class="w-4 h-4 text-rose-600"></i> Cấu Hình Trực Quan & AI
+          </h3>
+
+          <!-- Google Gemini API Key with Eye Toggle & .env Path -->
+          <div class="space-y-1.5">
+            <div class="flex items-center justify-between">
+              <label class="text-xs font-bold text-slate-700 uppercase">Google Gemini API Key</label>
+              <span class="text-[11px] text-emerald-700 font-semibold font-mono flex items-center gap-1">
+                <i data-lucide="file-check" class="w-3.5 h-3.5"></i> Lưu vĩnh viễn trong file .env
+              </span>
+            </div>
+            <div class="relative">
+              <input type="password" id="cfg-gemini-key" placeholder="AIzaSy..." class="w-full text-sm px-4 py-2.5 pr-10 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-rose-500 focus:outline-none font-mono">
+              <button type="button" onclick="togglePasswordVisibility('cfg-gemini-key', 'key-eye-icon')" class="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-700 transition cursor-pointer" title="Xem / Ẩn Key">
+                <i data-lucide="eye" class="w-4 h-4" id="key-eye-icon"></i>
+              </button>
+            </div>
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1 text-[11px] text-slate-500">
+              <span>Lấy key miễn phí tại <a href="https://aistudio.google.com/" target="_blank" class="text-rose-600 underline font-semibold">aistudio.google.com</a></span>
+              <span class="font-mono text-[10px] text-slate-400" id="cfg-env-path">Đang tải vị trí lưu...</span>
+            </div>
+          </div>
+
+          <!-- Gemini Model Dropdown -->
+          <div>
+            <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Mô Hình Gemini AI (Mặc định)</label>
+            <select id="cfg-gemini-model" class="w-full text-xs px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none">
+              <option value="gemini-3.5-flash-lite">⚡ Gemini 3.5 Flash Lite (500 RPD Miễn phí - Khuyên dùng)</option>
+              <option value="gemini-3.1-flash-lite">⚡ Gemini 3.1 Flash Lite (500 RPD Miễn phí)</option>
+              <option value="gemini-3.8-flash">🧠 Gemini 3.8 Flash (Thông minh, 20 RPD)</option>
+              <option value="gemini-3.7-flash">Gemini 3.7 Flash (20 RPD)</option>
+              <option value="gemini-3.5-flash">Gemini 3.5 Flash (20 RPD)</option>
+              <option value="gemini-2.5-flash">Gemini 2.5 Flash (20 RPD)</option>
+            </select>
+          </div>
+
+          <!-- Vietnamese Voice Engine Selector (VieNeu-TTS / Edge-TTS) -->
+          <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+            <div class="text-xs font-bold text-slate-800 flex items-center justify-between">
+              <span class="flex items-center gap-1.5"><i data-lucide="mic" class="w-4 h-4 text-rose-600"></i> Công Cụ Giọng Nói Tiếng Việt (TTS)</span>
+              <span class="text-[10px] bg-rose-50 text-rose-700 border border-rose-200 px-1.5 py-0.5 rounded font-mono">VieNeu-TTS Integrated</span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Engine Giọng Đọc</label>
+                <select id="cfg-tts-engine" onchange="toggleTtsOptions(this.value)" class="w-full text-xs px-3 py-2 bg-white border border-slate-200 rounded-lg focus:outline-none">
+                  <option value="vieneu">🦜 VieNeu-TTS (pnnbao97/VieNeu-TTS on-device)</option>
+                  <option value="edge-tts">⚡ Microsoft Edge-TTS</option>
+                </select>
+              </div>
+
+              <div id="cfg-vieneu-box">
+                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Giọng Đọc VieNeu-TTS</label>
+                <div class="flex items-center gap-2">
+                  <select id="cfg-vieneu-voice" class="flex-1 text-xs px-3 py-2 bg-white border border-slate-200 rounded-lg focus:outline-none">
+                    <option value="Ái Hân" selected>Ái Hân (Nữ · Nam · Tin tức truyền cảm)</option>
+                    <option value="Mỹ Duyên">Mỹ Duyên (Nữ · Bắc · Đọc truyện ngọt ngào)</option>
+                    <option value="Mai Anh">Mai Anh (Nữ · Bắc · Tự nhiên, rõ ràng)</option>
+                    <option value="Trúc Ly">Trúc Ly (Nữ · Bắc · Phong cách tự nhiên)</option>
+                    <option value="Xuân Tiên">Xuân Tiên (Nữ · Bắc · Tin tức chuẩn)</option>
+                    <option value="Đức Trí">Đức Trí (Nam · Bắc · Trầm ấm, truyền cảm)</option>
+                    <option value="Hữu Quân">Hữu Quân (Nam · Bắc · Tin tức)</option>
+                    <option value="Minh Quân">Minh Quân (Nam · Bắc · Tự nhiên)</option>
+                    <option value="Mạnh Dũng">Mạnh Dũng (Nam · Bắc · Rõ ràng, dứt khoát)</option>
+                    <option value="Anh Khôi">Anh Khôi (Nam · Bắc · Kể chuyện)</option>
+                    <option value="Adam">Adam (Nam · Nam · Tự nhiên)</option>
+                  </select>
+                  <button type="button" onclick="previewSelectedVoice('vieneu')" class="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer shrink-0" title="Bấm để nghe thử giọng này">
+                    <i data-lucide="play" class="w-3.5 h-3.5 fill-current"></i> Nghe thử
+                  </button>
+                </div>
+              </div>
+
+              <div id="cfg-edgetts-box" class="hidden">
+                <label class="block text-[11px] font-semibold text-slate-600 mb-1">Giọng Đọc Edge-TTS</label>
+                <div class="flex items-center gap-2">
+                  <select id="cfg-voice-vi" class="flex-1 text-xs px-3 py-2 bg-white border border-slate-200 rounded-lg focus:outline-none">
+                    <option value="vi-VN-HoaiMyNeural">vi-VN-HoaiMyNeural (Nữ ấm áp)</option>
+                    <option value="vi-VN-NamMinhNeural">vi-VN-NamMinhNeural (Nam truyền cảm)</option>
+                  </select>
+                  <button type="button" onclick="previewSelectedVoice('edge-tts')" class="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer shrink-0" title="Bấm để nghe thử giọng này">
+                    <i data-lucide="play" class="w-3.5 h-3.5 fill-current"></i> Nghe thử
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- English Voice -->
+          <div>
+            <label class="block text-xs font-bold text-slate-700 uppercase mb-1">English Voice (Thuyết minh tiếng Anh)</label>
+            <div class="flex items-center gap-2">
+              <select id="cfg-voice-en" class="flex-1 text-sm px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl">
+                <option value="en-US-AriaNeural">en-US-AriaNeural (Female)</option>
+                <option value="en-US-GuyNeural">en-US-GuyNeural (Male)</option>
+              </select>
+              <button type="button" onclick="previewSelectedVoice('en')" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1 cursor-pointer shrink-0" title="Listen sample">
+                <i data-lucide="play" class="w-3.5 h-3.5 fill-current"></i> Listen
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="text-xs font-bold text-slate-700 uppercase">Độ Mờ Hiệu Ứng Spotlight (Làm tối nền xung quanh)</label>
+              <span id="cfg-spotlight-val" class="text-xs font-bold text-rose-600">35%</span>
+            </div>
+            <input type="range" id="cfg-spotlight" min="0" max="0.8" step="0.05" value="0.35" class="w-full accent-rose-600">
+          </div>
+
+          <button onclick="saveSettings()" class="w-full py-3.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-sm transition cursor-pointer flex items-center justify-center gap-2 shadow-md">
+            <i data-lucide="save" class="w-4 h-4"></i> Lưu Vĩnh Viễn Vào File .env
+          </button>
+        </div>
+
+        <!-- RIGHT (5 COLS): SYSTEM HEALTH & LIVE PLAYGROUND -->
+        <div class="lg:col-span-5 space-y-5">
+
+          <!-- System Health Card -->
+          <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <i data-lucide="shield-check" class="w-4 h-4 text-emerald-600"></i> Chẩn Đoán Sức Khỏe Hệ Thống
+              </h3>
+              <span class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-bold border border-emerald-200">Hoạt động tốt</span>
+            </div>
+            <div id="system-health-list" class="space-y-3">
+              <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                <div class="flex items-center justify-between text-xs font-bold text-slate-800">
+                  <span class="flex items-center gap-1.5"><i data-lucide="brain" class="w-3.5 h-3.5 text-rose-600"></i> Google Gemini Multimodal</span>
+                  <span id="sh-gemini-status" class="text-[11px] text-emerald-600 font-bold">Kiểm tra...</span>
+                </div>
+                <p id="sh-gemini-desc" class="text-[11px] text-slate-500">Mô hình: gemini-3.5-flash-lite · 500 RPD</p>
+              </div>
+
+              <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                <div class="flex items-center justify-between text-xs font-bold text-slate-800">
+                  <span class="flex items-center gap-1.5"><i data-lucide="mic-2" class="w-3.5 h-3.5 text-blue-600"></i> Công Cụ Giọng Nói VieNeu-TTS</span>
+                  <span id="sh-tts-status" class="text-[11px] text-emerald-600 font-bold">Kiểm tra...</span>
+                </div>
+                <p id="sh-tts-desc" class="text-[11px] text-slate-500">Thần kinh On-device 48kHz / Dự phòng Edge-TTS</p>
+              </div>
+
+              <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                <div class="flex items-center justify-between text-xs font-bold text-slate-800">
+                  <span class="flex items-center gap-1.5"><i data-lucide="chrome" class="w-3.5 h-3.5 text-amber-600"></i> Playwright Trình Duyệt Tự Động</span>
+                  <span id="sh-browser-status" class="text-[11px] text-emerald-600 font-bold">Sẵn sàng</span>
+                </div>
+                <p id="sh-browser-desc" class="text-[11px] text-slate-500">Chromium & MS Edge · Độ phân giải 1920x1080</p>
+              </div>
+
+              <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                <div class="flex items-center justify-between text-xs font-bold text-slate-800">
+                  <span class="flex items-center gap-1.5"><i data-lucide="film" class="w-3.5 h-3.5 text-indigo-600"></i> FFmpeg & MoviePy Rendering</span>
+                  <span id="sh-ffmpeg-status" class="text-[11px] text-emerald-600 font-bold">Sẵn sàng</span>
+                </div>
+                <p id="sh-ffmpeg-desc" class="text-[11px] text-slate-500">Kết xuất Video MP4 độ phân giải cao 24fps</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Live Voice Audio Playground -->
+          <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-3">
+            <h3 class="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <i data-lucide="play-square" class="w-4 h-4 text-rose-600"></i> Phòng Thử Nghiệm Giọng Đọc Trực Tiếp
+            </h3>
+            <p class="text-xs text-slate-500">Gõ bất kỳ câu thoại nào để nghe thử trực tiếp âm thanh phát ra từ giọng đọc AI bạn đã chọn.</p>
+            <div class="space-y-2">
+              <textarea id="live-voice-text" rows="2" class="w-full text-xs p-3 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500">Xin chào, đây là giọng đọc thuyết minh tự động của hệ thống Student Workspace.</textarea>
+              <div class="flex items-center justify-between gap-2">
+                <button type="button" onclick="playLiveVoiceTest()" id="live-voice-btn" class="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs">
+                  <i data-lucide="volume-2" class="w-3.5 h-3.5 fill-current"></i> Nghe Thử Ngay
+                </button>
+                <span id="live-voice-status" class="text-[11px] text-slate-400 font-mono"></span>
+              </div>
+              <audio id="live-audio-player" class="w-full mt-2 hidden" controls></audio>
+            </div>
+          </div>
+
+          <!-- Storage Specs Card -->
+          <div class="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-3">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
+              <i data-lucide="hard-drive" class="w-4 h-4 text-slate-500"></i> Dung Lượng & Quy Chuẩn Lưu Trữ
+            </h3>
+            <div class="space-y-2 text-xs text-slate-600">
+              <div class="flex items-center justify-between">
+                <span>Dung lượng thư mục Output:</span>
+                <span class="font-bold text-slate-900 font-mono" id="health-storage-size">-- MB</span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span>Tổng tệp thành phẩm:</span>
+                <span class="font-bold text-slate-900 font-mono" id="health-storage-files">-- tệp</span>
+              </div>
+              <div class="pt-2 border-t border-slate-200 flex flex-col gap-1">
+                <span class="text-[11px] text-slate-500 font-semibold">Tệp cấu hình lưu trữ:</span>
+                <span class="font-mono text-[10px] text-slate-500 bg-white p-1.5 rounded border border-slate-200 break-all" id="health-env-path">...</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
     </section>
 
   </main>
 
   <!-- JAVASCRIPT & CUSTOM VIDEO PLAYER LOGIC -->
   <script>
-    const customVideo = document.getElementById('custom-video');
-    const scrubberBar = document.getElementById('scrubber-bar');
-    const scrubberProgress = document.getElementById('scrubber-progress');
-    const ctrlPlayIcon = document.getElementById('ctrl-play-icon');
-    const bigPlayBtn = document.getElementById('big-play-btn');
-    const bigPlayIcon = document.getElementById('big-play-icon');
-    const ctrlTimeDisplay = document.getElementById('ctrl-time-display');
+    let customVideo = document.getElementById('custom-video');
+    let scrubberBar = document.getElementById('scrubber-bar');
+    let scrubberProgress = document.getElementById('scrubber-progress');
+    let ctrlPlayIcon = document.getElementById('ctrl-play-icon');
+    let bigPlayBtn = document.getElementById('big-play-btn');
+    let bigPlayIcon = document.getElementById('big-play-icon');
+    let ctrlTimeDisplay = document.getElementById('ctrl-time-display');
 
     // ==========================================
     // 1. TỰ ĐỘNG DỪNG VIDEO KHI CHUYỂN TAB / ẨN
@@ -1039,7 +1384,8 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         activeBtn.classList.add('bg-white', 'text-rose-600', 'shadow-xs');
       }
 
-      if (tabName === 'artifacts') checkArtifacts();
+      if (tabName === 'artifacts') loadGuides();
+      if (tabName === 'settings') loadSystemHealth();
       lucide.createIcons();
     }
 
@@ -1266,7 +1612,14 @@ DASHBOARD_HTML = """<!DOCTYPE html>
               showStatus('Lỗi: ' + st.error, false);
             } else if (st.last_result) {
               showStatus(`Hoàn tất trong ${st.last_result.elapsed_seconds.toFixed(1)}s! Chuyển sang Thư viện thành phẩm...`, false);
-              setTimeout(() => switchTab('artifacts'), 1200);
+              setTimeout(() => {
+                switchTab('artifacts');
+                if (st.last_result && st.last_result.guide_id) {
+                  loadGuides(st.last_result.guide_id);
+                } else {
+                  loadGuides();
+                }
+              }, 1200);
             } else {
               hideStatus();
             }
@@ -1286,91 +1639,456 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       document.getElementById('status-bar').classList.add('hidden');
     }
 
-    // Artifacts & Custom Player Attachment
-    async function checkArtifacts() {
+    // ==============================================================
+    // THƯ VIỆN THÀNH PHẨM THEO PHIÊN HƯỚNG DẪN (GUIDES SHOWCASE)
+    // ==============================================================
+    let allGuides = [];
+    let selectedGuideId = null;
+
+    async function loadGuides(preferredId = null) {
+      const container = document.getElementById('guides-list-container');
       try {
-        const res = await fetch('/api/artifacts');
+        const res = await fetch('/api/guides');
         const data = await res.json();
+        allGuides = data.guides || [];
 
-        const vSelectGroup = document.getElementById('video-select-group');
-        const vBtnArea = document.getElementById('video-download-btn-area');
-        vSelectGroup.innerHTML = '';
+        const countBadge = document.getElementById('guide-count-badge');
+        if (countBadge) countBadge.innerText = `${allGuides.length} phiên hướng dẫn`;
+        const dirCount = document.getElementById('guide-dir-count');
+        if (dirCount) dirCount.innerText = `${allGuides.length} mục`;
 
-        if (data.videos && data.videos.length > 0) {
-          const firstVid = data.videos[0];
-          customVideo.src = firstVid.url;
-          updatePlayIcons(false);
-
-          vBtnArea.innerHTML = `
-            <a href="${firstVid.url}" download class="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition shadow-sm">
-              <i data-lucide="download" class="w-4 h-4"></i> Tải Video MP4 (${firstVid.name})
-            </a>
+        if (allGuides.length === 0) {
+          container.innerHTML = `
+            <div class="p-8 text-center text-slate-400 space-y-2">
+              <i data-lucide="folder-x" class="w-8 h-8 mx-auto text-slate-300"></i>
+              <p class="text-xs font-semibold">Chưa có phiên hướng dẫn nào.</p>
+              <p class="text-[11px] text-slate-400">Hãy tạo hướng dẫn mới tại tab AI Tự Động Hóa.</p>
+            </div>
           `;
-
-          data.videos.forEach(v => {
-            const btn = document.createElement('button');
-            btn.className = "px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-lg transition cursor-pointer";
-            btn.innerText = v.name;
-            btn.onclick = () => {
-              customVideo.src = v.url;
-              updatePlayIcons(false);
-              vBtnArea.innerHTML = `<a href="${v.url}" download class="inline-flex items-center gap-2 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition shadow-sm"><i data-lucide="download" class="w-4 h-4"></i> Tải Video MP4 (${v.name})</a>`;
-              lucide.createIcons();
-            };
-            vSelectGroup.appendChild(btn);
-          });
+          renderGuideDetail(null);
+          lucide.createIcons();
+          return;
         }
 
-        // Documents & Slides
-        const docList = document.getElementById('doc-files-list');
-        docList.innerHTML = '';
-        const allDocs = [...(data.documents || []), ...(data.slides || [])];
-        if (allDocs.length === 0) {
-          docList.innerHTML = `<p class="text-xs text-slate-400">Chưa có tài liệu nào.</p>`;
-        } else {
-          allDocs.forEach(d => {
-            const isDocx = d.name.endsWith('.docx');
-            const isPptx = d.name.endsWith('.pptx');
-            const iconName = isDocx ? 'file-text' : (isPptx ? 'presentation' : 'file-code');
-            const badgeColor = isDocx ? 'bg-blue-50 text-blue-700 border-blue-200' : (isPptx ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-slate-100 text-slate-700 border-slate-200');
-            const row = document.createElement('div');
-            row.className = "p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between";
-            row.innerHTML = `
-              <div class="flex items-center gap-2.5">
-                <span class="p-2 rounded-lg border ${badgeColor}"><i data-lucide="${iconName}" class="w-4 h-4"></i></span>
-                <div>
-                  <div class="font-bold text-xs text-slate-900">${d.name}</div>
-                  <div class="text-[10px] text-slate-500 flex items-center gap-2 mt-0.5">
-                    <span>${(d.size_bytes / 1024).toFixed(1)} KB</span>
-                    <span>•</span>
-                    <span class="font-mono text-slate-400">${d.created_time || ''}</span>
+        if (preferredId && allGuides.some(g => g.guide_id === preferredId)) {
+          selectedGuideId = preferredId;
+        } else if (!selectedGuideId || !allGuides.some(g => g.guide_id === selectedGuideId)) {
+          selectedGuideId = allGuides[0].guide_id;
+        }
+
+        renderGuideList(allGuides);
+        const sel = allGuides.find(g => g.guide_id === selectedGuideId);
+        renderGuideDetail(sel);
+      } catch (e) {
+        container.innerHTML = `<div class="p-4 text-xs text-rose-500">Lỗi nạp danh sách: ${e}</div>`;
+      }
+    }
+
+    function renderGuideList(guides) {
+      const container = document.getElementById('guides-list-container');
+      container.innerHTML = '';
+
+      guides.forEach(g => {
+        const isSel = g.guide_id === selectedGuideId;
+        const item = document.createElement('div');
+        item.className = `p-3.5 rounded-xl border transition cursor-pointer space-y-2 relative group ${
+          isSel 
+            ? 'bg-rose-50/50 border-rose-400 shadow-xs ring-1 ring-rose-400/20' 
+            : 'bg-slate-50 hover:bg-white border-slate-200 hover:border-slate-300'
+        }`;
+        item.onclick = (e) => {
+          if (e.target.closest('.del-btn')) return;
+          selectedGuideId = g.guide_id;
+          renderGuideList(allGuides);
+          renderGuideDetail(g);
+        };
+
+        const hasVideo = !!g.video;
+        const hasDocx = !!g.docx;
+        const hasPptx = !!g.pptx;
+
+        item.innerHTML = `
+          <div class="flex items-start justify-between gap-2">
+            <h4 class="font-bold text-xs text-slate-900 line-clamp-2 ${isSel ? 'text-rose-700' : ''}">
+              ${g.title}
+            </h4>
+            <button onclick="deleteGuide('${g.guide_id}')" class="del-btn p-1 text-slate-300 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition opacity-0 group-hover:opacity-100 shrink-0 cursor-pointer" title="Xóa vĩnh viễn phiên này">
+              <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-1.5 text-[10px]">
+            <span class="px-2 py-0.5 rounded-md bg-white border border-slate-200 font-mono text-slate-500 flex items-center gap-1">
+              <i data-lucide="clock" class="w-3 h-3 text-slate-400"></i> ${g.created_at || 'Mới'}
+            </span>
+            <span class="px-2 py-0.5 rounded-md bg-white border border-slate-200 font-bold text-slate-600">
+              ${g.total_steps || (g.steps ? g.steps.length : 0)} bước
+            </span>
+          </div>
+
+          <div class="flex items-center gap-2 pt-1 border-t border-slate-100 text-[10px]">
+            <span class="flex items-center gap-1 ${hasVideo ? 'text-rose-600 font-bold' : 'text-slate-300'}">
+              <i data-lucide="film" class="w-3 h-3"></i> Video
+            </span>
+            <span>•</span>
+            <span class="flex items-center gap-1 ${hasDocx ? 'text-blue-600 font-bold' : 'text-slate-300'}">
+              <i data-lucide="file-text" class="w-3 h-3"></i> Word
+            </span>
+            <span>•</span>
+            <span class="flex items-center gap-1 ${hasPptx ? 'text-amber-600 font-bold' : 'text-slate-300'}">
+              <i data-lucide="presentation" class="w-3 h-3"></i> Slide
+            </span>
+          </div>
+        `;
+        container.appendChild(item);
+      });
+      lucide.createIcons();
+    }
+
+    function filterGuides(query) {
+      const q = (query || '').toLowerCase().trim();
+      if (!q) {
+        renderGuideList(allGuides);
+        return;
+      }
+      const filtered = allGuides.filter(g => 
+        (g.title || '').toLowerCase().includes(q) ||
+        (g.user_goal || '').toLowerCase().includes(q) ||
+        (g.user_notes || '').toLowerCase().includes(q) ||
+        (g.target_url || '').toLowerCase().includes(q)
+      );
+      renderGuideList(filtered);
+    }
+
+    function renderGuideDetail(guide) {
+      const container = document.getElementById('guide-detail-container');
+      if (!guide) {
+        container.innerHTML = `
+          <div class="bg-white border border-slate-200 rounded-2xl p-12 text-center text-slate-400 space-y-3 shadow-xs">
+            <i data-lucide="sparkles" class="w-10 h-10 mx-auto text-rose-300"></i>
+            <h3 class="font-bold text-base text-slate-700">Chưa có phiên hướng dẫn nào được chọn</h3>
+            <p class="text-xs max-w-md mx-auto">Vui lòng chọn một phiên từ danh sách bên trái hoặc tạo hướng dẫn mới từ tab AI Tự Động Hóa.</p>
+          </div>
+        `;
+        lucide.createIcons();
+        return;
+      }
+
+      // Xây dựng danh sách các bước
+      const stepsHtml = (guide.steps || []).map(s => `
+        <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+          <div class="flex items-start justify-between gap-3">
+            <div class="flex items-center gap-2">
+              <span class="w-6 h-6 rounded-full bg-rose-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
+                ${s.step_number}
+              </span>
+              <h5 class="font-bold text-xs text-slate-900">${s.title}</h5>
+            </div>
+          </div>
+          <p class="text-xs text-slate-600 leading-relaxed">${s.description || ''}</p>
+          ${s.voiceover ? `
+            <div class="p-2.5 bg-rose-50/70 border border-rose-200 rounded-lg text-xs text-rose-800 flex items-start gap-2">
+              <i data-lucide="mic" class="w-3.5 h-3.5 text-rose-600 shrink-0 mt-0.5"></i>
+              <div class="italic text-[11px]">"${s.voiceover}"</div>
+            </div>
+          ` : ''}
+          ${s.image_url ? `
+            <div class="aspect-video bg-slate-900 rounded-lg overflow-hidden border border-slate-200 max-h-64">
+              <a href="${s.image_url}" target="_blank" title="Xem ảnh kích thước đầy đủ">
+                <img src="${s.image_url}" class="w-full h-full object-contain hover:scale-105 transition duration-300" alt="Bước ${s.step_number}" />
+              </a>
+            </div>
+          ` : ''}
+        </div>
+      `).join('');
+
+      container.innerHTML = `
+        <!-- CONTEXT CARD: YÊU CẦU & GHI CHÚ NGHIỆP VỤ BAN ĐẦU -->
+        <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
+          <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 text-[10px] font-bold uppercase font-mono">Phiên ${guide.guide_id}</span>
+                <span class="text-xs text-slate-400 font-mono">${guide.created_at || ''}</span>
+              </div>
+              <h3 class="text-base font-bold text-slate-900 mt-1">${guide.title}</h3>
+            </div>
+            <button onclick="deleteGuide('${guide.guide_id}')" class="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0">
+              <i data-lucide="trash-2" class="w-3.5 h-3.5 text-rose-600"></i> Xóa Vĩnh Viễn Phiên Này
+            </button>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div class="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+              <div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                <i data-lucide="target" class="w-3.5 h-3.5 text-rose-600"></i> Yêu Cầu Mục Tiêu (Goal)
+              </div>
+              <p class="text-xs font-semibold text-slate-800">${guide.user_goal || guide.title}</p>
+            </div>
+
+            <div class="p-3 bg-amber-50/70 border border-amber-200 rounded-xl space-y-1">
+              <div class="text-[11px] font-bold text-amber-800 uppercase tracking-wider flex items-center gap-1.5">
+                <i data-lucide="file-edit" class="w-3.5 h-3.5 text-amber-600"></i> Ghi Chú & Chỉ Đạo Nghiệp Vụ
+              </div>
+              <p class="text-xs text-amber-950 font-medium">${guide.user_notes ? guide.user_notes : '<span class="text-amber-700/60 italic font-normal">Không có ghi chú thêm</span>'}</p>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap items-center justify-between text-xs text-slate-500 pt-1">
+            <div class="flex items-center gap-1.5">
+              <i data-lucide="globe" class="w-3.5 h-3.5 text-slate-400"></i>
+              <span>Hệ thống: <a href="${guide.target_url}" target="_blank" class="text-rose-600 hover:underline font-mono font-semibold">${guide.target_url}</a></span>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <i data-lucide="list-ordered" class="w-3.5 h-3.5 text-slate-400"></i>
+              <span>Tổng số bước: <b class="text-slate-800">${guide.total_steps || (guide.steps ? guide.steps.length : 0)} bước</b></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 1-CLICK ARTIFACT DOWNLOAD CARDS -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <!-- Video MP4 -->
+          <div class="p-3.5 bg-white border border-slate-200 rounded-xl shadow-xs space-y-2 flex flex-col justify-between">
+            <div>
+              <div class="w-8 h-8 rounded-lg bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center mb-2">
+                <i data-lucide="film" class="w-4 h-4"></i>
+              </div>
+              <h5 class="text-xs font-bold text-slate-900">Video MP4</h5>
+              <p class="text-[10px] text-slate-400 font-mono mt-0.5">${guide.video ? (guide.video.size_bytes / (1024*1024)).toFixed(1) + ' MB' : 'Chưa tạo'}</p>
+            </div>
+            ${guide.video ? `
+              <a href="${guide.video.url}" download class="w-full py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold rounded-lg transition text-center flex items-center justify-center gap-1">
+                <i data-lucide="download" class="w-3 h-3"></i> Tải MP4
+              </a>
+            ` : '<span class="text-[11px] text-slate-300">Không khả dụng</span>'}
+          </div>
+
+          <!-- Word DOCX -->
+          <div class="p-3.5 bg-white border border-slate-200 rounded-xl shadow-xs space-y-2 flex flex-col justify-between">
+            <div>
+              <div class="w-8 h-8 rounded-lg bg-blue-50 border border-blue-200 text-blue-600 flex items-center justify-center mb-2">
+                <i data-lucide="file-text" class="w-4 h-4"></i>
+              </div>
+              <h5 class="text-xs font-bold text-slate-900">Tài Liệu Word</h5>
+              <p class="text-[10px] text-slate-400 font-mono mt-0.5">${guide.docx ? (guide.docx.size_bytes / 1024).toFixed(1) + ' KB' : 'Chưa tạo'}</p>
+            </div>
+            ${guide.docx ? `
+              <a href="${guide.docx.url}" download class="w-full py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded-lg transition text-center flex items-center justify-center gap-1">
+                <i data-lucide="download" class="w-3 h-3"></i> Tải DOCX
+              </a>
+            ` : '<span class="text-[11px] text-slate-300">Không khả dụng</span>'}
+          </div>
+
+          <!-- PowerPoint PPTX -->
+          <div class="p-3.5 bg-white border border-slate-200 rounded-xl shadow-xs space-y-2 flex flex-col justify-between">
+            <div>
+              <div class="w-8 h-8 rounded-lg bg-amber-50 border border-amber-200 text-amber-600 flex items-center justify-center mb-2">
+                <i data-lucide="presentation" class="w-4 h-4"></i>
+              </div>
+              <h5 class="text-xs font-bold text-slate-900">Slide 16:9</h5>
+              <p class="text-[10px] text-slate-400 font-mono mt-0.5">${guide.pptx ? (guide.pptx.size_bytes / 1024).toFixed(1) + ' KB' : 'Chưa tạo'}</p>
+            </div>
+            ${guide.pptx ? `
+              <a href="${guide.pptx.url}" download class="w-full py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold rounded-lg transition text-center flex items-center justify-center gap-1">
+                <i data-lucide="download" class="w-3 h-3"></i> Tải PPTX
+              </a>
+            ` : '<span class="text-[11px] text-slate-300">Không khả dụng</span>'}
+          </div>
+
+          <!-- Markdown MD -->
+          <div class="p-3.5 bg-white border border-slate-200 rounded-xl shadow-xs space-y-2 flex flex-col justify-between">
+            <div>
+              <div class="w-8 h-8 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center mb-2">
+                <i data-lucide="file-code" class="w-4 h-4"></i>
+              </div>
+              <h5 class="text-xs font-bold text-slate-900">Bản Markdown</h5>
+              <p class="text-[10px] text-slate-400 font-mono mt-0.5">${guide.md ? (guide.md.size_bytes / 1024).toFixed(1) + ' KB' : 'Chưa tạo'}</p>
+            </div>
+            ${guide.md ? `
+              <a href="${guide.md.url}" download class="w-full py-1.5 bg-slate-800 hover:bg-slate-700 text-white text-[11px] font-bold rounded-lg transition text-center flex items-center justify-center gap-1">
+                <i data-lucide="download" class="w-3 h-3"></i> Tải MD
+              </a>
+            ` : '<span class="text-[11px] text-slate-300">Không khả dụng</span>'}
+          </div>
+        </div>
+
+        <!-- VIDEO PLAYER SECTION (IF VIDEO AVAILABLE) -->
+        ${guide.video ? `
+          <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-3">
+            <div class="flex items-center justify-between">
+              <h4 class="font-bold text-xs uppercase tracking-wider text-slate-700 flex items-center gap-2">
+                <i data-lucide="film" class="w-4 h-4 text-rose-600"></i> Video Thuyết Minh AI: ${guide.video.name}
+              </h4>
+              <span class="text-[11px] font-mono text-slate-400">${(guide.video.size_bytes / (1024*1024)).toFixed(1)} MB</span>
+            </div>
+
+            <div id="player-container" class="relative group aspect-video bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 shadow-xl select-none flex items-center justify-center">
+              <video id="custom-video" class="w-full h-full object-contain cursor-pointer" preload="metadata" playsinline src="${guide.video.url}"></video>
+
+              <div id="big-play-btn" onclick="togglePlayPause()" class="absolute inset-0 flex items-center justify-center bg-black/25 backdrop-blur-[1px] transition-all cursor-pointer">
+                <div class="w-16 h-16 rounded-full bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center shadow-2xl transform hover:scale-110 transition">
+                  <i data-lucide="play" class="w-8 h-8 fill-white ml-1" id="big-play-icon"></i>
+                </div>
+              </div>
+
+              <div id="player-controls" class="absolute bottom-0 inset-x-0 bg-gradient-to-t from-slate-950/95 via-slate-950/75 to-transparent px-4 pb-3 pt-8 flex flex-col gap-2 transition-opacity opacity-0 group-hover:opacity-100">
+                <div class="relative w-full h-1.5 hover:h-2.5 bg-slate-700/60 rounded-full cursor-pointer transition-all flex items-center" id="scrubber-bar">
+                  <div id="scrubber-buffer" class="absolute left-0 top-0 bottom-0 bg-slate-600/60 rounded-full" style="width: 0%"></div>
+                  <div id="scrubber-progress" class="absolute left-0 top-0 bottom-0 bg-rose-500 rounded-full flex items-center justify-end" style="width: 0%">
+                    <div class="w-3 h-3 bg-white rounded-full shadow-md"></div>
+                  </div>
+                </div>
+
+                <div class="flex items-center justify-between text-white text-xs pt-0.5">
+                  <div class="flex items-center gap-3">
+                    <button onclick="togglePlayPause()" class="p-1 hover:text-rose-400 transition" title="Phát / Tạm dừng (Space)">
+                      <i data-lucide="play" class="w-4 h-4 fill-current" id="ctrl-play-icon"></i>
+                    </button>
+                    <div class="flex items-center gap-1.5">
+                      <button onclick="toggleMute()" class="p-1 hover:text-rose-400 transition" title="Bật / Tắt âm">
+                        <i data-lucide="volume-2" class="w-4 h-4" id="ctrl-vol-icon"></i>
+                      </button>
+                      <input type="range" id="ctrl-vol-slider" min="0" max="1" step="0.05" value="1" oninput="setVideoVolume(this.value)" class="w-16 h-1 accent-rose-500 cursor-pointer">
+                    </div>
+                    <span class="font-mono text-[11px] text-slate-300" id="ctrl-time-display">00:00 / 00:00</span>
+                  </div>
+
+                  <div class="flex items-center gap-2.5">
+                    <div class="relative">
+                      <button onclick="toggleSpeedMenu()" id="ctrl-speed-btn" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[11px] font-mono font-semibold transition">1.0x</button>
+                      <div id="ctrl-speed-menu" class="hidden absolute bottom-7 right-0 bg-slate-900 border border-slate-700 rounded-lg p-1 text-[11px] font-mono shadow-xl flex flex-col gap-0.5 z-30">
+                        <button onclick="setVideoSpeed(0.75)" class="px-2.5 py-1 text-left hover:bg-rose-600 rounded">0.75x</button>
+                        <button onclick="setVideoSpeed(1.0)" class="px-2.5 py-1 text-left hover:bg-rose-600 rounded">1.0x</button>
+                        <button onclick="setVideoSpeed(1.25)" class="px-2.5 py-1 text-left hover:bg-rose-600 rounded">1.25x</button>
+                        <button onclick="setVideoSpeed(1.5)" class="px-2.5 py-1 text-left hover:bg-rose-600 rounded">1.5x</button>
+                      </div>
+                    </div>
+                    <button onclick="toggleFullscreen()" class="p-1 hover:text-rose-400 transition" title="Toàn màn hình (F)">
+                      <i data-lucide="maximize" class="w-4 h-4"></i>
+                    </button>
                   </div>
                 </div>
               </div>
-              <a href="${d.url}" download class="p-2 hover:bg-white rounded-lg text-slate-600 hover:text-rose-600 transition border border-transparent hover:border-slate-200">
-                <i data-lucide="download" class="w-4 h-4"></i>
-              </a>
-            `;
-            docList.appendChild(row);
-          });
-        }
+            </div>
+          </div>
+        ` : ''}
 
-        // Gallery
-        const gallery = document.getElementById('annotated-gallery');
-        gallery.innerHTML = '';
-        if (data.annotated_images) {
-          data.annotated_images.forEach(img => {
-            const el = document.createElement('a');
-            el.href = img.url;
-            el.target = "_blank";
-            el.className = "block aspect-video bg-slate-100 rounded-xl overflow-hidden border border-slate-200 hover:border-rose-500 transition shadow-xs";
-            el.innerHTML = `<img src="${img.url}" class="w-full h-full object-cover" alt="step" />`;
-            gallery.appendChild(el);
-          });
-        }
+        <!-- STEP ROADMAP & VISUAL GALLERY -->
+        <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-4">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+            <h4 class="font-bold text-xs uppercase tracking-wider text-slate-700 flex items-center gap-2">
+              <i data-lucide="layers" class="w-4 h-4 text-rose-600"></i> Lộ Trình Thao Tác Chi Tiết (${(guide.steps || []).length} bước)
+            </h4>
+            <span class="text-[11px] text-slate-400">Hình ảnh có hiệu ứng Spotlight & Bounding Box</span>
+          </div>
 
-        lucide.createIcons();
+          <div class="space-y-3">
+            ${stepsHtml || '<p class="text-xs text-slate-400">Không có dữ liệu bước thao tác.</p>'}
+          </div>
+        </div>
+      `;
+
+      // Re-bind video controls
+      customVideo = document.getElementById('custom-video');
+      scrubberBar = document.getElementById('scrubber-bar');
+      scrubberProgress = document.getElementById('scrubber-progress');
+      ctrlPlayIcon = document.getElementById('ctrl-play-icon');
+      bigPlayBtn = document.getElementById('big-play-btn');
+      bigPlayIcon = document.getElementById('big-play-icon');
+      ctrlTimeDisplay = document.getElementById('ctrl-time-display');
+
+      if (customVideo) {
+        customVideo.addEventListener('timeupdate', () => {
+          if (!customVideo.duration) return;
+          const pct = (customVideo.currentTime / customVideo.duration) * 100;
+          if (scrubberProgress) scrubberProgress.style.width = pct + '%';
+          if (ctrlTimeDisplay) ctrlTimeDisplay.innerText = formatTime(customVideo.currentTime) + ' / ' + formatTime(customVideo.duration);
+        });
+        customVideo.addEventListener('ended', () => {
+          updatePlayIcons(false);
+        });
+      }
+      if (scrubberBar) {
+        scrubberBar.addEventListener('click', (e) => {
+          if (!customVideo || !customVideo.duration) return;
+          const rect = scrubberBar.getBoundingClientRect();
+          const pos = (e.clientX - rect.left) / rect.width;
+          customVideo.currentTime = pos * customVideo.duration;
+        });
+      }
+
+      lucide.createIcons();
+    }
+
+    async function deleteGuide(guideId) {
+      if (!confirm(`Bạn có chắc chắn muốn XÓA VĨNH VIỄN toàn bộ tài liệu, video, slide và ảnh của phiên '${guideId}' không?\n\nHành động này sẽ xóa hoàn toàn các file trên ổ đĩa và không thể hoàn tác.`)) {
+        return;
+      }
+      try {
+        const res = await fetch(`/api/guides/${guideId}`, { method: 'DELETE' });
+        const d = await res.json();
+        alert(d.message || 'Đã xóa vĩnh viễn!');
+        selectedGuideId = null;
+        loadGuides();
+      } catch (e) {
+        alert('Lỗi xóa: ' + e);
+      }
+    }
+
+    async function loadSystemHealth() {
+      try {
+        const res = await fetch('/api/system/health');
+        const h = await res.json();
+
+        // Gemini
+        const gStat = document.getElementById('sh-gemini-status');
+        const gDesc = document.getElementById('sh-gemini-desc');
+        if (gStat) {
+          gStat.innerText = h.gemini.has_key ? 'Sẵn sàng' : 'Dùng Offline';
+          gStat.className = h.gemini.has_key ? 'text-[11px] text-emerald-600 font-bold' : 'text-[11px] text-amber-600 font-bold';
+        }
+        if (gDesc) gDesc.innerText = `Mô hình: ${h.gemini.model} · ${h.gemini.quota}`;
+
+        // VieNeu-TTS
+        const tStat = document.getElementById('sh-tts-status');
+        const tDesc = document.getElementById('sh-tts-desc');
+        if (tStat) {
+          tStat.innerText = h.vieneu.ready ? 'VieNeu-TTS (48kHz)' : 'Edge-TTS (Cloud)';
+          tStat.className = 'text-[11px] text-emerald-600 font-bold';
+        }
+        if (tDesc) tDesc.innerText = `Engine: ${h.vieneu.engine} · Giọng: ${h.vieneu.voice}`;
+
+        // Storage
+        const sSize = document.getElementById('health-storage-size');
+        const sFiles = document.getElementById('health-storage-files');
+        const sEnv = document.getElementById('health-env-path');
+        if (sSize) sSize.innerText = `${h.storage.size_mb} MB`;
+        if (sFiles) sFiles.innerText = `${h.storage.total_files} tệp`;
+        if (sEnv) sEnv.innerText = h.storage.env_path;
       } catch (e) {}
+    }
+
+    async function playLiveVoiceTest() {
+      const text = document.getElementById('live-voice-text').value.trim();
+      const engine = document.getElementById('cfg-tts-engine').value;
+      const voice = engine === 'vieneu' ? document.getElementById('cfg-vieneu-voice').value : document.getElementById('cfg-voice-vi').value;
+      const statusSpan = document.getElementById('live-voice-status');
+      const audioEl = document.getElementById('live-audio-player');
+
+      if (!text) { alert('Vui lòng nhập văn bản thử nghiệm!'); return; }
+
+      statusSpan.innerText = 'Đang tổng hợp giọng nói...';
+      try {
+        const url = `/api/tts/preview?engine=${encodeURIComponent(engine)}&voice=${encodeURIComponent(voice)}&lang=vi&_t=${Date.now()}`;
+        audioEl.src = url;
+        audioEl.classList.remove('hidden');
+        await audioEl.play();
+        statusSpan.innerText = 'Đang phát âm thanh';
+        audioEl.onended = () => { statusSpan.innerText = 'Hoàn tất phát'; };
+      } catch (e) {
+        statusSpan.innerText = 'Lỗi phát: ' + e;
+      }
     }
 
     // Dev Survey
@@ -1524,6 +2242,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         const d = await res.json();
         alert(d.message || 'Đã lưu vĩnh viễn vào tệp .env thành công!');
         loadSettings();
+        loadSystemHealth();
       } catch (e) {
         alert('Lỗi lưu: ' + e);
       }
@@ -1536,7 +2255,8 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     window.addEventListener('DOMContentLoaded', () => {
       lucide.createIcons();
       loadSettings();
-      checkArtifacts();
+      loadGuides();
+      loadSystemHealth();
     });
   </script>
 </body>

@@ -115,5 +115,8 @@ class GuideBook(BaseModel):
     summary: BilingualText
     target_url: str
     created_at: str
+    user_goal: Optional[str] = None
+    user_notes: Optional[str] = None
+    artifacts: Dict[str, str] = Field(default_factory=dict)
     steps: List[ProcessedStep] = Field(default_factory=list)
     recon_report: Optional[ReconReport] = None

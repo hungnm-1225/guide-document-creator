@@ -182,6 +182,14 @@ class GuidePipeline:
                 artifacts[f"video_{lang}"] = video_path
                 console.print(f"  🎥 Video ({lang.upper()}): [green]{video_path}[/green]")
 
+        guidebook.artifacts = artifacts
+        try:
+            guide_file = settings.output_dir / "guides" / f"{guidebook.guide_id}.json"
+            guide_file.parent.mkdir(parents=True, exist_ok=True)
+            guide_file.write_text(guidebook.model_dump_json(indent=2), encoding="utf-8")
+        except Exception:
+            pass
+
         # ---------------------------------------------------------
         # DỌN DẸP ASSETS TẠM NẾU BẬT CỜ
         # ---------------------------------------------------------
@@ -292,7 +300,8 @@ class GuidePipeline:
             languages=languages,
             generate_video=generate_video,
             start_time=start_time,
-            user_notes=user_notes
+            user_notes=user_notes,
+            goal=goal
         )
 
     async def run_recorder_flow(
@@ -335,7 +344,8 @@ class GuidePipeline:
         languages: List[str],
         generate_video: bool,
         start_time: float,
-        user_notes: Optional[str] = None
+        user_notes: Optional[str] = None,
+        goal: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Quy trình chung biến RecordedAction -> ProcessedStep -> DOCX, PPTX, Video"""
         total_steps = len(recorded_actions)
@@ -368,12 +378,15 @@ class GuidePipeline:
             )
             processed_steps.append(processed_step)
 
+        gid = f"guide_{int(time.time())}"
         guidebook = GuideBook(
-            guide_id=f"guide_{int(time.time())}",
+            guide_id=gid,
             title=BilingualText(vi=title_vi, en=title_en),
             summary=BilingualText(vi=summary_vi, en=summary_en),
             target_url=target_url,
             created_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
+            user_goal=goal or title_vi,
+            user_notes=user_notes,
             steps=processed_steps,
             recon_report=None
         )
@@ -389,6 +402,16 @@ class GuidePipeline:
             for lang in languages:
                 await self.video_gen.generate_speech_for_steps(guidebook, lang=lang)
                 artifacts[f"video_{lang}"] = self.video_gen.generate_video(guidebook, lang=lang)
+
+        guidebook.artifacts = artifacts
+
+        # Lưu manifest JSON của Guide để giao diện Thư viện Thành phẩm hiển thị chi tiết ngữ cảnh
+        try:
+            guide_file = settings.output_dir / "guides" / f"{gid}.json"
+            guide_file.parent.mkdir(parents=True, exist_ok=True)
+            guide_file.write_text(guidebook.model_dump_json(indent=2), encoding="utf-8")
+        except Exception as e:
+            console.print(f"[yellow]⚠️ Lưu guide manifest: {e}[/yellow]")
 
         elapsed = time.time() - start_time
         console.print(f"\n[bold green]✨ HOÀN TẤT TRONG {elapsed:.1f} GIÂY![/bold green]")

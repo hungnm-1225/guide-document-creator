@@ -44,6 +44,7 @@ output/videos/*
 output/recon/*
 output/documents/*
 output/slides/*
+output/guides/*
 !output/**/.gitkeep
 
 # IDE & OS

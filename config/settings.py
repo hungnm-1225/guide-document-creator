@@ -77,6 +77,7 @@ class Settings(BaseModel):
         (self.output_dir / "documents").mkdir(parents=True, exist_ok=True)
         (self.output_dir / "slides").mkdir(parents=True, exist_ok=True)
         (self.output_dir / "videos").mkdir(parents=True, exist_ok=True)
+        (self.output_dir / "guides").mkdir(parents=True, exist_ok=True)
 
 
 settings = Settings()

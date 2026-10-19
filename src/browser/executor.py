@@ -176,9 +176,13 @@ class BrowserExecutor:
         element = await self._find_element(page, target)
         if element:
             try:
-                await element.scroll_into_view_if_needed(timeout=3000)
+                await element.evaluate('el => el.scrollIntoView({ block: "center", behavior: "smooth" })')
+                await asyncio.sleep(0.8)
             except Exception:
-                pass
+                try:
+                    await element.scroll_into_view_if_needed(timeout=3000)
+                except Exception:
+                    pass
             
             # Lấy thông tin bounding box
             box_dict = await element.bounding_box()
@@ -229,6 +233,14 @@ class BrowserExecutor:
         elif action_type == "hover":
             if element:
                 await element.hover()
+
+        elif action_type == "scroll":
+            if element:
+                await element.scroll_into_view_if_needed()
+            else:
+                scroll_y = int(value) if value and str(value).lstrip("-").isdigit() else 600
+                await page.mouse.wheel(0, scroll_y)
+            await asyncio.sleep(0.8)
 
         elif action_type == "wait":
             wait_time = float(value) if value else 2.0

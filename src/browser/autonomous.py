@@ -151,18 +151,31 @@ class AutonomousFlowAgent:
             return k_map
 
     async def _extract_deep_features(self, page: Page) -> List[FeatureModule]:
-        """Trích xuất các module chức năng ngóc ngách trên trang Dashboard"""
+        """Trích xuất các module chức năng ngóc ngách trên trang Dashboard (bao gồm toàn bộ Navigation & Sidebar)"""
         js_code = r"""
         () => {
             const list = [];
             const seen = new Set();
-            const elements = document.querySelectorAll('header a, nav a, .card a, [role="tab"], [role="menuitem"], a.btn, h4, h3');
-            const limit = Math.min(elements.length, 100);
+            const selectors = [
+                'aside a, aside button, aside [role="button"]',
+                'nav a, nav button, nav [role="button"]',
+                '[role="navigation"] a, [role="navigation"] button',
+                '.sidebar a, .sidebar button, [class*="sidebar"] a, [class*="sidebar"] button',
+                '.drawer a, .drawer button, [class*="drawer"] a, [class*="drawer"] button',
+                '.MuiDrawer-root a, .MuiDrawer-root [role="button"], .MuiListItem-root a, .MuiListItemButton-root',
+                '[role="tab"], [role="menuitem"]',
+                'button, input[type="submit"], input[type="button"], a.btn, [role="button"]',
+                '.card a, [data-key], h4, h3'
+            ].join(', ');
+
+            const elements = document.querySelectorAll(selectors);
+            const limit = Math.min(elements.length, 120);
             for (let i = 0; i < limit; i++) {
                 const el = elements[i];
                 const rect = el.getBoundingClientRect();
-                if (rect.width > 20 && rect.height > 15 && rect.top > 0 && rect.top < 1080) {
-                    const text = (el.innerText || el.getAttribute('aria-label') || '').trim().replace(/\s+/g, ' ');
+                if (rect.width > 16 && rect.height > 12 && rect.top >= 0) {
+                    let text = (el.innerText || el.getAttribute('aria-label') || el.getAttribute('title') || '').trim();
+                    text = text.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ');
                     if (text && text.length > 2 && text.length < 50 && !seen.has(text.toLowerCase())) {
                         seen.add(text.toLowerCase());
                         let sel = el.tagName.toLowerCase();
@@ -171,11 +184,12 @@ class AutonomousFlowAgent:
                             const c = el.className.trim().split(/\s+/)[0];
                             if (c && !c.includes(':')) sel += '.' + c;
                         }
+                        const isSidebar = rect.left < 380 || el.closest('aside, .sidebar, .drawer, [role="navigation"]');
                         list.push({
                             name: text,
                             selector: sel,
                             url_target: el.getAttribute('href') || null,
-                            category: el.closest('nav, header') ? 'Điều hướng' : (el.closest('.card, .course-info') ? 'Khóa học' : 'Chức năng'),
+                            category: isSidebar ? 'Menu bên trái' : (el.closest('.card, .course-info') ? 'Khóa học' : 'Chức năng'),
                             bounding_box: {
                                 x: Math.round(rect.left),
                                 y: Math.round(rect.top),
@@ -444,6 +458,55 @@ class AutonomousFlowAgent:
         console.print(f"\n[bold green]🎉 Hoàn thành tự động hóa 100%![/bold green] Đã ghi nhận {len(recorded_actions)} bước chuẩn xác.")
         return recorded_actions
 
+    async def _discover_sidebar_navigation(self, page: Page) -> List[Dict[str, Any]]:
+        """Quét và nhận diện toàn bộ các mục menu trên thanh điều hướng bên trái (Left Sidebar)"""
+        js_code = r"""
+        () => {
+            const list = [];
+            const seen = new Set();
+            const selectors = [
+                'aside a, aside button, aside [role="button"], aside [role="link"]',
+                'nav a, nav button, nav [role="button"]',
+                '.sidebar a, .sidebar button, [class*="sidebar"] a, [class*="sidebar"] button',
+                '.drawer a, .drawer button, [class*="drawer"] a, [class*="drawer"] button',
+                '[role="navigation"] a, [role="navigation"] button',
+                '.MuiDrawer-root a, .MuiDrawer-root [role="button"], .MuiListItem-root a, .MuiListItemButton-root',
+                '#sidebar a, #nav a, .left-menu a, a.nav-link, button.nav-link, a.list-group-item'
+            ].join(', ');
+
+            const elements = document.querySelectorAll(selectors);
+            for (const el of elements) {
+                const rect = el.getBoundingClientRect();
+                const isSidebar = el.closest('aside, .sidebar, .drawer, .MuiDrawer-root, [class*="sidebar"], [class*="drawer"]') !== null || (rect.left < 400 && rect.width > 24);
+                if (isSidebar && rect.width > 20 && rect.height > 16 && rect.top >= 0) {
+                    let text = (el.innerText || el.getAttribute('aria-label') || el.getAttribute('title') || '').trim();
+                    text = text.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ');
+                    if (!text || text.length < 2 || text.length > 50 || /^\d+$/.test(text)) continue;
+                    const low = text.toLowerCase();
+                    if (['close', 'đóng', 'thu gọn', 'mở rộng', 'expand', 'collapse', 'user profile', 'avatar', 'logout', 'đăng xuất'].includes(low)) continue;
+
+                    if (!seen.has(low)) {
+                        seen.add(low);
+                        list.push({
+                            name: text,
+                            href: el.getAttribute('href') || null,
+                            tag: el.tagName.toLowerCase(),
+                            x: Math.round(rect.left),
+                            y: Math.round(rect.top),
+                            w: Math.round(rect.width),
+                            h: Math.round(rect.height)
+                        });
+                    }
+                }
+            }
+            return list;
+        }
+        """
+        try:
+            return await page.evaluate(js_code)
+        except Exception:
+            return []
+
     async def _execute_custom_deep_directives(
         self,
         page: Page,
@@ -452,232 +515,144 @@ class AutonomousFlowAgent:
         current_step: int
     ) -> List[RecordedAction]:
         """
-        Thực hiện chuỗi hành động chuyên sâu theo đúng yêu cầu nghiệp vụ của người dùng:
-        - Bấm vào khóa học cụ thể được chỉ định (e.g. LEANBOT Terra Protocol C++ (EN))
-        - Lần lượt đi qua từng chức năng/tab yêu cầu (Course, Grades, Competencies, Notes)
-        - Chụp ảnh và đóng khung Bounding Box cho từng vị trí!
+        Thực hiện chuỗi hành động chuyên sâu hoàn toàn linh hoạt (Universal Dynamic AI Agent):
+        - Quét động toàn bộ phần tử thực tế trên trang (Navigation, Tabs, Buttons, Cards)
+        - AI Planner (Gemini) phân tích mục tiêu & ghi chú người dùng để sinh lộ trình các bước CÓ THỰC trên website này
+        - Lần lượt tương tác, chụp ảnh Spotlight Bounding Box và mở view chi tiết
+        - Thích ứng với 100% các loại website trong hệ sinh thái: LMS, Kho code, IDE, Workspace, Portal...
         """
         actions = []
         step_idx = current_step
-        prompt_text = f"{goal} {user_notes or ''}"
+        from src.ai.gemini_client import GeminiAnalyzer
+        analyzer = GeminiAnalyzer()
 
-        # 1. Trích xuất các thực thể trong ngoặc kép hoặc từ khóa khóa học
-        quotes = re.findall(r'[\"“\'](.*?)[\"”\']', prompt_text)
-        course_target = None
-        requested_tabs = []
-        for q in quotes:
-            q_str = q.strip()
-            if any(k == q_str.lower() for k in ['course', 'grades', 'competencies', 'notes']):
-                requested_tabs.append(q_str)
-            elif len(q_str) > 3 and not course_target:
-                course_target = q_str
+        console.print("[bold cyan]🧭 [Universal AI Agent][/bold cyan] Đang quét cấu trúc giao diện thực tế của website...")
 
-        # Fallback từ khóa khóa học nếu không để trong ngoặc kép
-        if not course_target:
-            for kw in ["LEANBOT Terra Protocol C++ (EN)", "LEANBOT Terra Protocol", "Leanbot", "Course"]:
-                if kw.lower() in prompt_text.lower():
-                    course_target = kw
-                    break
+        # 1. Trích xuất toàn bộ các phần tử tương tác thực tế đang có trên trang
+        discovered_elements = await self._extract_deep_features(page)
 
-        # Nếu người dùng có yêu cầu về các tab Course, Grades, Competencies, Notes nhưng không đặt trong ngoặc
-        if not requested_tabs:
-            for tab_kw in ['Course', 'Grades', 'Competencies', 'Notes']:
-                if tab_kw.lower() in prompt_text.lower():
-                    requested_tabs.append(tab_kw)
+        # 2. Nếu là thanh sidebar hoặc drawer đang thu gọn, kiểm tra nút toggle để mở
+        if len(discovered_elements) < 3:
+            toggle_btn = await page.query_selector('button[aria-label*="menu" i], button.drawer-toggle, [data-action="toggle-drawer"], button:has(svg)')
+            if toggle_btn and await toggle_btn.is_visible():
+                try:
+                    await toggle_btn.click()
+                    await asyncio.sleep(1.0)
+                    discovered_elements = await self._extract_deep_features(page)
+                except Exception:
+                    pass
 
-        # 2. Tìm kiếm phần tử khóa học trên trang Dashboard
-        course_elem = None
-        if course_target:
-            candidates = await page.query_selector_all(f"a:has-text('{course_target}')")
-            # Ưu tiên thẻ a có href dẫn tới trang tổng quan khóa học (course/view.php)
-            for c in candidates:
-                href = (await c.get_attribute("href")) or ""
-                if await c.is_visible() and "course/view" in href:
-                    course_elem = c
-                    break
-            if not course_elem:
+        # 3. Nhờ AI Planner lập kế hoạch các bước tối ưu dựa trên DOM thực tế và ghi chú người dùng
+        page_title = await page.title() or ""
+        planned_steps = analyzer.plan_deep_directives(
+            discovered_elements=discovered_elements,
+            goal=goal,
+            user_notes=user_notes,
+            page_title=page_title,
+            page_url=page.url
+        )
+
+        console.print(f"📋 AI Planner đã vạch ra {len(planned_steps)} bước thao tác thực tế theo đúng yêu cầu:")
+        for idx, ps in enumerate(planned_steps, start=1):
+            console.print(f"   {idx}. [{ps.get('action_type', 'click').upper()}] {ps.get('target_name')} - {ps.get('purpose')}")
+
+        # 4. Thực thi từng bước theo kế hoạch AI đã lập
+        for step_plan in planned_steps:
+            target_name = step_plan.get("target_name", "")
+            action_type = step_plan.get("action_type", "click")
+            purpose = step_plan.get("purpose", "")
+            open_view = step_plan.get("open_view_after", True)
+
+            console.print(f"\n[cyan]▶ [Agent Action][/cyan] Thực hiện: '[bold]{target_name}[/bold]' ({purpose})")
+
+            # Tìm phần tử trên trang theo text hoặc selector
+            elem = None
+            try:
+                candidates = await page.query_selector_all(
+                    f"aside a, aside button, nav a, nav button, .sidebar a, a:has-text('{target_name}'), button:has-text('{target_name}'), [role='tab']:has-text('{target_name}'), [role='menuitem']:has-text('{target_name}')"
+                )
                 for c in candidates:
                     if await c.is_visible():
-                        course_elem = c
+                        elem = c
                         break
-
-        if course_elem:
-            # Cuộn phần tử vào giữa màn hình trước khi chụp ảnh và click
-            try:
-                await course_elem.evaluate('el => el.scrollIntoView({ block: "center" })')
-                await asyncio.sleep(1.0)
             except Exception:
                 pass
 
-            step_idx += 1
-            box_c = await course_elem.bounding_box()
-            c_bbox = BoundingBox(x=box_c["x"], y=box_c["y"], w=box_c["width"], h=box_c["height"]) if box_c else None
-            console.print(f"[cyan]▶ Bước {step_idx}:[/cyan] Truy cập khóa học: '[bold]{course_target}[/bold]'")
+            if not elem and step_plan.get("selector"):
+                try:
+                    elem = await page.query_selector(step_plan["selector"])
+                except Exception:
+                    pass
 
-            raw_path_c = str(self.output_raw_dir / f"step_{step_idx:02d}_raw.png")
-            await self._safe_screenshot(page, raw_path_c)
+            bbox = None
+            if elem:
+                try:
+                    await elem.evaluate('el => el.scrollIntoView({ block: "center", behavior: "smooth" })')
+                    await asyncio.sleep(0.8)
+                    box = await elem.bounding_box()
+                    if box:
+                        bbox = BoundingBox(x=box["x"], y=box["y"], w=box["width"], h=box["height"])
+                except Exception:
+                    pass
+
+            # Bước tương tác (Click / Navigate)
+            step_idx += 1
+            raw_path_step = str(self.output_raw_dir / f"step_{step_idx:02d}_raw.png")
+            await self._safe_screenshot(page, raw_path_step)
+
             actions.append(
                 RecordedAction(
                     step_number=step_idx,
-                    action_type="click",
-                    selector=f"a:has-text('{course_target}')",
+                    action_type="click" if action_type == "click" else "navigate",
+                    selector=step_plan.get("selector") or target_name,
                     input_value=None,
-                    element_text=f"Khóa học {course_target}",
-                    bounding_box=c_bbox,
-                    raw_screenshot_path=raw_path_c,
+                    element_text=f"Mục {target_name} trên giao diện",
+                    bounding_box=bbox,
+                    raw_screenshot_path=raw_path_step,
                     timestamp=time.time(),
                     page_title=await page.title() or "",
                     page_url=page.url,
                 )
             )
 
-            # Mở khóa học trực tiếp qua href để đảm bảo 100% điều hướng thành công
+            # Thực hiện thao tác click và chờ view mới tải
             try:
-                c_href = await course_elem.get_attribute("href")
-                if c_href and "http" in c_href:
-                    console.print(f"   🌐 Đang mở khóa học tại: {c_href}")
-                    await page.goto(c_href, wait_until="domcontentloaded", timeout=15000)
-                else:
-                    await course_elem.click(timeout=6000)
-                    await page.wait_for_load_state("domcontentloaded", timeout=10000)
-                await asyncio.sleep(2.5)
-            except Exception as e:
-                console.print(f"[yellow]⚠️ Lỗi điều hướng vào khóa học: {e}[/yellow]")
-
-            # 3. Quét và ghi lại các Tab chuyên sâu (Course, Grades, Competencies, Notes)
-            # Định vị CHÍNH XÁC thanh nav-link bên dưới banner (y > 150), tránh nhầm với nút drawer màu xanh ở góc trên
-            for tab_name in requested_tabs:
-                tab_candidates = await page.query_selector_all(".secondary-navigation a, .nav-tabs a, nav a.nav-link, a.nav-link")
-                target_tab = None
-                for t in tab_candidates:
-                    if await t.is_visible():
-                        t_txt = (await t.inner_text()).strip()
-                        if t_txt.lower() == tab_name.lower():
-                            b = await t.bounding_box()
-                            if b and b["width"] > 15 and b["y"] > 150:
-                                target_tab = t
-                                break
-
-                if target_tab:
-                    step_idx += 1
-                    t_box = await target_tab.bounding_box()
-                    tb_bbox = BoundingBox(x=t_box["x"], y=t_box["y"], w=t_box["width"], h=t_box["height"]) if t_box else None
-                    console.print(f"[cyan]▶ Bước {step_idx}:[/cyan] Khám phá chức năng: '[bold]{tab_name}[/bold]'")
-
-                    raw_path_tab = str(self.output_raw_dir / f"step_{step_idx:02d}_raw.png")
-                    await self._safe_screenshot(page, raw_path_tab)
-                    actions.append(
-                        RecordedAction(
-                            step_number=step_idx,
-                            action_type="click",
-                            selector=f"tab-{tab_name.lower()}",
-                            input_value=None,
-                            element_text=f"Chức năng {tab_name}",
-                            bounding_box=tb_bbox,
-                            raw_screenshot_path=raw_path_tab,
-                            timestamp=time.time(),
-                            page_title=await page.title() or "",
-                            page_url=page.url,
-                        )
-                    )
-
-            # 4. CUỘN XUỐNG VÀ CLICK VÀO BÀI HỌC (Lessons / Learning Guide)
-            console.print("   📜 Đang cuộn trang xuống phần bài học để hướng dẫn học tập...")
-            await page.evaluate('window.scrollBy({ top: 400, behavior: "smooth" })')
-            await asyncio.sleep(1.5)
-
-            lesson_candidates = await page.query_selector_all("a:has-text('Learning Guide'), a:has-text('M1L1'), a.aalink")
-            target_lesson = None
-            for l in lesson_candidates:
-                if await l.is_visible():
-                    target_lesson = l
-                    break
-
-            if target_lesson:
-                await target_lesson.evaluate('el => el.scrollIntoView({ block: "center", behavior: "smooth" })')
-                await asyncio.sleep(1.5)
-                l_box = await target_lesson.bounding_box()
-                lb_bbox = BoundingBox(x=l_box["x"], y=l_box["y"], w=l_box["width"], h=l_box["height"]) if l_box else None
-                lesson_text = (await target_lesson.inner_text()).strip().replace('\n', ' ')
-                console.print(f"[cyan]▶ Bước {step_idx + 1}:[/cyan] Chọn bài học: '[bold]{lesson_text[:40]}[/bold]'")
-
-                step_idx += 1
-                raw_path_lesson = str(self.output_raw_dir / f"step_{step_idx:02d}_raw.png")
-                await self._safe_screenshot(page, raw_path_lesson)
-                actions.append(
-                    RecordedAction(
-                        step_number=step_idx,
-                        action_type="click",
-                        selector="a.aalink",
-                        input_value=None,
-                        element_text=f"Bài học {lesson_text[:50]}",
-                        bounding_box=lb_bbox,
-                        raw_screenshot_path=raw_path_lesson,
-                        timestamp=time.time(),
-                        page_title=await page.title() or "",
-                        page_url=page.url,
-                    )
-                )
-
-                # Mở bài học trực tiếp qua href
+                if elem:
+                    await elem.click(timeout=6000)
+                await asyncio.sleep(2.0)
                 try:
-                    l_href = await target_lesson.get_attribute("href")
-                    if l_href and "http" in l_href:
-                        console.print(f"   🌐 Đang mở bài học tại: {l_href}")
-                        await page.goto(l_href, wait_until="domcontentloaded", timeout=15000)
-                    else:
-                        await target_lesson.click(timeout=6000)
-                        await page.wait_for_load_state("domcontentloaded", timeout=10000)
-                    await asyncio.sleep(2.5)
+                    await page.wait_for_load_state("domcontentloaded", timeout=6000)
+                except Exception:
+                    pass
+            except Exception as e:
+                console.print(f"[yellow]⚠️ Tương tác với {target_name}: {e}[/yellow]")
 
-                    # Tìm nút Enter / Bắt đầu học trong bài giảng
-                    enter_btn = await page.query_selector("button:has-text('Enter'), a:has-text('Enter'), button.btn-primary")
-                    e_bbox = None
-                    if enter_btn and await enter_btn.is_visible():
-                        e_box = await enter_btn.bounding_box()
-                        if e_box:
-                            e_bbox = BoundingBox(x=e_box["x"], y=e_box["y"], w=e_box["width"], h=e_box["height"])
-
-                    step_idx += 1
-                    raw_path_inner_view = str(self.output_raw_dir / f"step_{step_idx:02d}_raw.png")
-                    await self._safe_screenshot(page, raw_path_inner_view)
-                    actions.append(
-                        RecordedAction(
-                            step_number=step_idx,
-                            action_type="click" if e_bbox else "custom",
-                            selector="button-enter",
-                            input_value=None,
-                            element_text="Bắt đầu học bài học (Nút Enter)",
-                            bounding_box=e_bbox,
-                            raw_screenshot_path=raw_path_inner_view,
-                            timestamp=time.time(),
-                            page_title=await page.title() or "",
-                            page_url=page.url,
-                        )
-                    )
-                except Exception as e:
-                    console.print(f"[yellow]⚠️ Lỗi mở bài học: {e}[/yellow]")
-        else:
-            # Fallback nếu không có khóa học đặc thù: tìm chức năng điều hướng
-            deep_target = await self._find_deep_feature_target(page, goal, user_notes)
-            if deep_target:
-                feat_elem, feat_name = deep_target
+            # Nếu bước này mở ra một view mới, chụp ảnh và ghi nhận bước khám phá view
+            if open_view:
                 step_idx += 1
-                box_f = await feat_elem.bounding_box()
-                f_bbox = BoundingBox(x=box_f["x"], y=box_f["y"], w=box_f["width"], h=box_f["height"]) if box_f else None
-                console.print(f"[cyan]▶ Bước {step_idx}:[/cyan] Đi sâu vào chức năng: '[bold]{feat_name}[/bold]'")
+                raw_path_view = str(self.output_raw_dir / f"step_{step_idx:02d}_raw.png")
+                await self._safe_screenshot(page, raw_path_view)
 
-                raw_path_f = str(self.output_raw_dir / f"step_{step_idx:02d}_raw.png")
-                await self._safe_screenshot(page, raw_path_f)
+                # Tìm khu vực trọng tâm của view mới để định vị Bounding Box
+                content_bbox = None
+                try:
+                    center_container = await page.query_selector("main, [role='main'], article, .main-content, .content, .card, table")
+                    if center_container and await center_container.is_visible():
+                        cb = await center_container.bounding_box()
+                        if cb and cb["width"] > 100:
+                            content_bbox = BoundingBox(x=cb["x"], y=cb["y"], w=cb["width"], h=cb["height"])
+                except Exception:
+                    pass
+
                 actions.append(
                     RecordedAction(
                         step_number=step_idx,
-                        action_type="click",
-                        selector=feat_name,
+                        action_type="custom",
+                        selector=f"view-{target_name.lower().replace(' ', '-')}",
                         input_value=None,
-                        element_text=f"Mục {feat_name}",
-                        bounding_box=f_bbox,
-                        raw_screenshot_path=raw_path_f,
+                        element_text=f"Khám phá chi tiết giao diện {target_name}: Giới thiệu ý nghĩa và cách sử dụng",
+                        bounding_box=content_bbox,
+                        raw_screenshot_path=raw_path_view,
                         timestamp=time.time(),
                         page_title=await page.title() or "",
                         page_url=page.url,
@@ -685,40 +660,6 @@ class AutonomousFlowAgent:
                 )
 
         return actions
-
-    async def _find_deep_feature_target(self, page: Page, goal: str, user_notes: Optional[str] = None):
-        """Tìm phần tử chức năng ngóc ngách phù hợp nhất với mục tiêu hoặc ghi chú người dùng"""
-        combined_text = f"{goal} {user_notes or ''}".lower()
-
-        # 1. Thử tìm theo từ khóa người dùng yêu cầu
-        keywords = ["leanbot", "categories", "ptools", "khóa học", "danh mục", "my courses", "recent", "home"]
-        for kw in keywords:
-            if kw in combined_text:
-                try:
-                    elem = await page.query_selector(f"a:has-text('{kw}' i), button:has-text('{kw}' i)")
-                    if elem and await elem.is_visible():
-                        t = (await elem.inner_text()).strip() or kw.title()
-                        return elem, t
-                except Exception:
-                    pass
-
-        # 2. Nếu không có từ khóa đặc thù, tìm chức năng nổi bật trên thanh điều hướng (Categories, PTools, Home)
-        default_selectors = [
-            "a:has-text('Categories')",
-            "a:has-text('PTools')",
-            "a:has-text('Home')",
-            "nav a",
-        ]
-        for sel in default_selectors:
-            try:
-                elem = await page.query_selector(sel)
-                if elem and await elem.is_visible():
-                    t = (await elem.inner_text()).strip()
-                    if t:
-                        return elem, t
-            except Exception:
-                pass
-        return None
 
     async def _find_login_trigger(self, page: Page):
         """Tìm nút đăng nhập trên trang hiện tại theo nhiều chiến lược linh hoạt"""
