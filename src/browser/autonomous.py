@@ -74,12 +74,15 @@ class AutonomousFlowAgent:
         credentials: Optional[Dict[str, str]] = None
     ) -> SiteKnowledgeMap:
         """
-        LƯỢT 1 (Pioneer Scout): Công cụ AI đi tiên phong dò DOM, khảo sát toàn bộ ngóc ngách,
-        menu, chức năng trước và sau đăng nhập. Tổng hợp thành bản đồ kiến thức SiteKnowledgeMap.
+        LƯỢT 1 (Pioneer Scout - Phát quang mở đường):
+        Công cụ AI đi tiên phong thám hiểm toàn diện DOM, nhận diện phân vùng không gian (trái, phải, trên, giữa),
+        phân loại các Menu cha (Accordion gom nhóm) vs Menu con vs Phân hệ độc lập, xác định phân hệ hạ cánh mặc định.
+        Tổng hợp thành bản đồ kiến thức SiteKnowledgeMap hoàn chỉnh để Lượt 2 chỉ việc bám theo thực thi.
         """
         console.print(f"[bold cyan]🧭 [Pioneer Scout - Lượt 1][/bold cyan] Bắt đầu thám hiểm địa hình & lập bản đồ tại: [underline]{url}[/underline]")
         recon_dir = settings.output_dir / "recon"
         recon_dir.mkdir(parents=True, exist_ok=True)
+        landing_img = str(recon_dir / f"landing_map_{int(time.time())}.png")
         dashboard_img = str(recon_dir / f"dashboard_map_{int(time.time())}.png")
 
         async with async_playwright() as p:
@@ -89,12 +92,13 @@ class AutonomousFlowAgent:
             )
             page = await context.new_page()
 
-            # 1. Khảo sát landing
+            # 1. Khảo sát trang hạ cánh ban đầu (Landing page)
             await page.goto(url, wait_until="domcontentloaded", timeout=settings.browser_timeout_ms)
             await asyncio.sleep(1.5)
             landing_title = await page.title() or ""
+            await self._safe_screenshot(page, landing_img)
 
-            # 2. Xử lý đăng nhập nếu có thông tin
+            # 2. Vượt qua đăng nhập nếu có thông tin (hỗ trợ liên miền OpenID SSO)
             sso_domain = None
             if credentials and (credentials.get("username") or credentials.get("email")):
                 login_btn = await self._find_login_trigger(page)
@@ -107,12 +111,12 @@ class AutonomousFlowAgent:
                     user_inp = await self._find_input(page, ["username", "email", "login", "user"])
                     if user_inp:
                         await user_inp.fill(credentials.get("username") or credentials.get("email", ""))
-                        await asyncio.sleep(0.5)
+                        await asyncio.sleep(0.4)
 
                     pass_inp = await page.query_selector("input[type='password'], input[name='password']")
                     if pass_inp:
                         await pass_inp.fill(credentials.get("password", ""))
-                        await asyncio.sleep(0.5)
+                        await asyncio.sleep(0.4)
 
                     sub_btn = await self._find_submit_button(page)
                     if sub_btn:
@@ -128,8 +132,29 @@ class AutonomousFlowAgent:
             dashboard_title = await page.title() or ""
             await self._safe_screenshot(page, dashboard_img)
 
-            # 3. Quét sâu các tính năng, ngóc ngách, thẻ khóa học, menu
+            # 3. Quét sâu toàn bộ các tính năng, ngóc ngách, menu, phân vùng giao diện
             discovered_features = await self._extract_deep_features(page)
+
+            # 4. Xác định phân hệ mà người dùng đang đứng ngay sau đăng nhập (Default Landing Module)
+            default_landing = await page.evaluate(r"""() => {
+                // Kiểm tra tiêu đề h1/h2 hoặc active menu item
+                const activeMenu = document.querySelector('.active, [aria-selected="true"], [class*="active" i], [class*="selected" i]');
+                if (activeMenu) {
+                    const t = (activeMenu.innerText || '').split('\n')[0].trim();
+                    if (t && t.length > 2 && t.length < 40) return t;
+                }
+                const h1 = document.querySelector('h1, h2');
+                if (h1) {
+                    const t = (h1.innerText || '').trim();
+                    if (t && t.length > 2 && t.length < 50) return t;
+                }
+                return 'Dashboard';
+            }""")
+
+            # Phân loại theo vị trí không gian để dễ dàng đáp ứng chỉ đạo (ví dụ 'menu bên trái', 'menu bên phải', 'thanh trên')
+            left_sidebar = [f for f in discovered_features if f.location == "left" or "trái" in (f.category or "").lower()]
+            right_sidebar = [f for f in discovered_features if f.location == "right" or "phải" in (f.category or "").lower()]
+            top_nav = [f for f in discovered_features if f.location == "top" or "trên" in (f.category or "").lower()]
 
             await browser.close()
 
@@ -140,14 +165,20 @@ class AutonomousFlowAgent:
                 dashboard_url=dashboard_url,
                 dashboard_title=dashboard_title,
                 dashboard_screenshot_path=dashboard_img,
+                landing_screenshot_path=landing_img,
+                default_landing_module=default_landing,
                 discovered_features=discovered_features,
+                left_sidebar_features=left_sidebar,
+                right_sidebar_features=right_sidebar,
+                top_nav_features=top_nav,
                 recommended_walkthroughs=[f.name for f in discovered_features[:6]]
             )
 
-            # Lưu ra file JSON
+            # Lưu ra file JSON kiến thức
             k_file = recon_dir / "site_knowledge_map.json"
             k_file.write_text(k_map.model_dump_json(indent=2), encoding="utf-8")
-            console.print(f"[green]✅ [Pioneer Scout] Đã lập xong Sơ đồ Kiến thức gồm {len(discovered_features)} chức năng / ngóc ngách![/green]")
+            console.print(f"[green]✅ [Pioneer Scout] Đã lập xong Bản đồ Kiến thức: {len(discovered_features)} tính năng (Trái: {len(left_sidebar)}, Phải: {len(right_sidebar)}, Trên: {len(top_nav)})![/green]")
+            console.print(f"📍 Phân hệ mặc định sau đăng nhập: [bold cyan]{default_landing}[/bold cyan]")
             return k_map
 
     async def _extract_deep_features(self, page: Page) -> List[FeatureModule]:
@@ -193,18 +224,48 @@ class AutonomousFlowAgent:
                         const exactSelector = `[data-guide-index="${idx}"]`;
 
                         const isSidebar = rect.left < 380 || el.closest('aside, .sidebar, .drawer, [role="navigation"], .MuiDrawer-root') !== null;
+                        const isRightSidebar = rect.left > 1400 || el.closest('[class*="right" i], aside.right') !== null;
+                        const isTopNav = rect.top < 90;
+
+                        let location = 'center';
+                        let cat = 'Chức năng';
+                        if (isSidebar) {
+                            location = 'left';
+                            cat = 'Menu bên trái';
+                        } else if (isRightSidebar) {
+                            location = 'right';
+                            cat = 'Menu bên phải';
+                        } else if (isTopNav) {
+                            location = 'top';
+                            cat = 'Thanh điều hướng trên';
+                        } else if (el.closest('.card, .course-info')) {
+                            cat = 'Khóa học / Nội dung';
+                        }
+                        
+                        // Kiểm tra xem đây có phải là Menu cha phân cấp (Accordion / Container) hay không:
+                        // 1. Có thuộc tính aria-expanded hoặc aria-haspopup
+                        // 2. Chứa icon mũi tên/caret mở rộng (svg, i, chevron, expand)
+                        // 3. Không có href điều hướng trang trực tiếp và có danh sách con bên cạnh
+                        const hasAriaExp = el.getAttribute('aria-expanded') !== null || el.getAttribute('aria-haspopup') !== null;
+                        const hasCaret = el.querySelector('svg, [class*="arrow" i], [class*="chevron" i], [class*="caret" i], [class*="expand" i]') !== null;
+                        const nextSibling = el.nextElementSibling;
+                        const hasSubUl = nextSibling && (nextSibling.tagName === 'UL' || nextSibling.tagName === 'OL' || nextSibling.className.includes('Collapse') || nextSibling.querySelector('a, button, [role="button"]'));
+                        const isExpandable = hasAriaExp || (hasCaret && !el.getAttribute('href')) || Boolean(hasSubUl);
+
                         list.push({
                             index: idx,
                             name: text,
                             selector: exactSelector,
                             url_target: el.getAttribute('href') || null,
-                            category: isSidebar ? 'Menu bên trái' : (el.closest('.card, .course-info') ? 'Khóa học' : 'Chức năng'),
+                            category: cat,
+                            location: location,
                             bounding_box: {
                                 x: Math.round(rect.left),
                                 y: Math.round(rect.top),
                                 w: Math.round(rect.width),
                                 h: Math.round(rect.height)
-                            }
+                            },
+                            is_expandable: Boolean(isExpandable)
                         });
                         idx++;
                         if (list.length >= 80) break;
@@ -226,7 +287,9 @@ class AutonomousFlowAgent:
                     selector=it.get("selector", ""),
                     url_target=it.get("url_target"),
                     category=it.get("category"),
+                    location=it.get("location", "center"),
                     bounding_box=bb_obj,
+                    is_expandable=it.get("is_expandable", False),
                 )
             )
         return modules
@@ -438,18 +501,34 @@ class AutonomousFlowAgent:
                     console.print(f"[yellow]⚠️ Quá trình chuyển hướng tiếp tục: {e}[/yellow]")
 
             # -------------------------------------------------------------
-            # BƯỚC 6: Chụp màn hình trạng thái Dashboard
+            # BƯỚC 6: Chụp màn hình trạng thái phân hệ sau đăng nhập
             # -------------------------------------------------------------
             step_idx += 1
             raw_path_end = str(self.output_raw_dir / f"step_{step_idx:02d}_raw.png")
             await self._safe_screenshot(page, raw_path_end)
+
+            # Xác định phân hệ hạ cánh thực tế (Dashboard, Home...)
+            default_landing = await page.evaluate(r"""() => {
+                const activeMenu = document.querySelector('.active, [aria-selected="true"], [class*="active" i], [class*="selected" i]');
+                if (activeMenu) {
+                    const t = (activeMenu.innerText || '').split('\n')[0].trim();
+                    if (t && t.length > 2 && t.length < 40) return t;
+                }
+                const h1 = document.querySelector('h1, h2');
+                if (h1) {
+                    const t = (h1.innerText || '').trim();
+                    if (t && t.length > 2 && t.length < 50) return t;
+                }
+                return 'Dashboard';
+            }""")
+
             recorded_actions.append(
                 RecordedAction(
                     step_number=step_idx,
                     action_type="custom",
                     selector="dashboard",
                     input_value=None,
-                    element_text=f"Giao diện Trang chủ ({await page.title()})",
+                    element_text=f"Giao diện {default_landing} ({await page.title()})",
                     bounding_box=None,
                     raw_screenshot_path=raw_path_end,
                     timestamp=time.time(),
@@ -459,9 +538,15 @@ class AutonomousFlowAgent:
             )
 
             # -------------------------------------------------------------
-            # BƯỚC 7+: Khám phá ngóc ngách chuyên sâu theo Yêu Cầu Người Dùng (Course / Tabs)
+            # BƯỚC 7+: Khám phá ngóc ngách chuyên sâu theo Yêu Cầu Người Dùng (Đã loại trừ phân hệ đang đứng)
             # -------------------------------------------------------------
-            deep_steps = await self._execute_custom_deep_directives(page, goal, user_notes, step_idx)
+            deep_steps = await self._execute_custom_deep_directives(
+                page=page,
+                goal=goal,
+                user_notes=user_notes,
+                current_step=step_idx,
+                current_landing_module=default_landing
+            )
             for d_act in deep_steps:
                 recorded_actions.append(d_act)
 
@@ -524,7 +609,8 @@ class AutonomousFlowAgent:
         page: Page,
         goal: str,
         user_notes: Optional[str],
-        current_step: int
+        current_step: int,
+        current_landing_module: Optional[str] = None
     ) -> List[RecordedAction]:
         """
         Thực hiện chuỗi hành động chuyên sâu hoàn toàn linh hoạt (Universal Dynamic AI Agent):
@@ -561,7 +647,8 @@ class AutonomousFlowAgent:
             goal=goal,
             user_notes=user_notes,
             page_title=page_title,
-            page_url=page.url
+            page_url=page.url,
+            current_landing_module=current_landing_module
         )
 
         console.print(f"📋 AI Planner đã vạch ra {len(planned_steps)} bước thao tác thực tế theo đúng yêu cầu:")
@@ -649,12 +736,54 @@ class AutonomousFlowAgent:
                 )
             )
 
-            # 4. Thực hiện click và theo dõi quá trình chuyển trang / đổi view
+            # 4. Thực hiện click và theo dõi quá trình chuyển trang / mở menu con
             prev_url = page.url
+            is_container_toggle = False
+            sub_candidates = []
+
             try:
                 if elem:
+                    # Trước khi click, kiểm tra xem phần tử có thuộc tính aria-expanded hoặc có menu con không
+                    was_expanded = await elem.get_attribute("aria-expanded")
                     await elem.click(timeout=6000)
-                await asyncio.sleep(1.5)
+                    await asyncio.sleep(1.2)
+
+                    # Kiểm tra xem có menu con vừa mở ra hay không (Accordion/Folder container)
+                    is_now_expanded = await elem.get_attribute("aria-expanded")
+                    if was_expanded == "false" and is_now_expanded == "true":
+                        is_container_toggle = True
+
+                    # Quét xem có các sub-items vừa xuất hiện trong vùng lân cận không
+                    check_sub_js = r"""
+                    (el) => {
+                        const subs = [];
+                        const parent = el.closest('li, div[class*="Item"], div[class*="group"]') || el.parentElement;
+                        if (!parent) return subs;
+                        const subContainer = parent.querySelector('ul, ol, div[class*="Collapse" i], div[class*="submenu" i], [role="group"]');
+                        if (subContainer) {
+                            const links = subContainer.querySelectorAll('a, button, [role="button"]');
+                            links.forEach(l => {
+                                const t = (l.innerText || l.getAttribute('aria-label') || '').trim().split('\n')[0];
+                                const r = l.getBoundingClientRect();
+                                if (t && r.height > 15) {
+                                    subs.push({
+                                        name: t,
+                                        x: Math.round(r.left),
+                                        y: Math.round(r.top),
+                                        w: Math.round(r.width),
+                                        h: Math.round(r.height)
+                                    });
+                                }
+                            });
+                        }
+                        return subs;
+                    }
+                    """
+                    sub_candidates = await page.evaluate(check_sub_js, elem)
+                    if sub_candidates and len(sub_candidates) > 0:
+                        is_container_toggle = True
+                        console.print(f"   📂 Phát hiện Menu cha dạng nhóm ({target_name}), đã mở rộng {len(sub_candidates)} menu con!")
+
                 try:
                     await page.wait_for_load_state("domcontentloaded", timeout=4000)
                 except Exception:
@@ -665,10 +794,95 @@ class AutonomousFlowAgent:
             except Exception as e:
                 console.print(f"[yellow]⚠️ Tương tác với {target_name}: {e}[/yellow]")
 
-            # 5. Nếu bước này mở ra giao diện mới: Reset scroll về đầu trang và chụp view mới
-            if open_view:
+            # 5. Xử lý phân nhánh cho 2 loại Menu:
+            # - LOẠI 2: Menu cha chỉ là nơi chứa menu con (Accordion) -> Mở rộng, giới thiệu menu con và click vào menu con đầu tiên
+            # - LOẠI 1: Menu cha có giao diện riêng -> Mở và chụp view giao diện chính như bình thường
+            if is_container_toggle and sub_candidates:
+                # Bước giới thiệu danh mục các menu con vừa mở ra
                 step_idx += 1
-                # QUAN TRỌNG: Luôn cuộn mượt/reset về đầu trang mới để tránh bị kẹt ở đáy trang!
+                raw_path_sub = str(self.output_raw_dir / f"step_{step_idx:02d}_raw.png")
+                await self._safe_screenshot(page, raw_path_sub)
+
+                first_sub = sub_candidates[0]
+                sub_names_str = ", ".join([s["name"] for s in sub_candidates[:3]])
+                sub_bbox = BoundingBox(x=first_sub["x"], y=first_sub["y"], w=first_sub["w"], h=first_sub["h"])
+
+                actions.append(
+                    RecordedAction(
+                        step_number=step_idx,
+                        action_type="click",
+                        selector=f"sub-menu-{first_sub['name'].lower().replace(' ', '-')}",
+                        input_value=None,
+                        element_text=f"Mục {first_sub['name']} thuộc nhóm {target_name} ({sub_names_str})",
+                        bounding_box=sub_bbox,
+                        raw_screenshot_path=raw_path_sub,
+                        timestamp=time.time(),
+                        page_title=await page.title() or "",
+                        page_url=page.url,
+                    )
+                )
+
+                # Click vào menu con đầu tiên để vào giao diện nghiệp vụ thực tế
+                try:
+                    sub_el = await page.query_selector(f"a:has-text('{first_sub['name']}'), button:has-text('{first_sub['name']}')")
+                    if sub_el and await sub_el.is_visible():
+                        await sub_el.click(timeout=6000)
+                        await asyncio.sleep(1.5)
+                except Exception:
+                    pass
+
+                # Chụp view của phân hệ con vừa được chọn
+                step_idx += 1
+                try:
+                    await page.evaluate("window.scrollTo({ top: 0, behavior: 'instant' })")
+                    await asyncio.sleep(0.5)
+                except Exception:
+                    pass
+                raw_path_view = str(self.output_raw_dir / f"step_{step_idx:02d}_raw.png")
+                await self._safe_screenshot(page, raw_path_view)
+
+                content_bbox = None
+                try:
+                    # Thuật toán tìm tiêu điểm Viewport ở nửa trên màn hình (y: 60px đến 450px)
+                    find_hero_js = r"""() => {
+                        const candidates = Array.from(document.querySelectorAll('h1, h2, h3, .card, .main-content, table, [role="heading"], .dashboard-card'));
+                        for (const el of candidates) {
+                            const r = el.getBoundingClientRect();
+                            if (r.width > 80 && r.height > 20 && r.top >= 50 && r.top <= 450 && r.left >= 200) {
+                                return {
+                                    x: Math.round(r.left),
+                                    y: Math.round(r.top),
+                                    w: Math.round(r.width),
+                                    h: Math.min(Math.round(r.height), 320)
+                                };
+                            }
+                        }
+                        return null;
+                    }"""
+                    hero_box = await page.evaluate(find_hero_js)
+                    if hero_box:
+                        content_bbox = BoundingBox(x=hero_box["x"], y=hero_box["y"], w=hero_box["w"], h=hero_box["h"])
+                except Exception:
+                    pass
+
+                actions.append(
+                    RecordedAction(
+                        step_number=step_idx,
+                        action_type="custom",
+                        selector=f"view-{first_sub['name'].lower().replace(' ', '-')}",
+                        input_value=None,
+                        element_text=f"Khám phá chi tiết giao diện {first_sub['name']}: Giới thiệu ý nghĩa và cách sử dụng",
+                        bounding_box=content_bbox,
+                        raw_screenshot_path=raw_path_view,
+                        timestamp=time.time(),
+                        page_title=await page.title() or "",
+                        page_url=page.url,
+                    )
+                )
+
+            elif open_view:
+                # LOẠI 1: Menu có giao diện riêng
+                step_idx += 1
                 try:
                     await page.evaluate("window.scrollTo({ top: 0, behavior: 'instant' })")
                     await asyncio.sleep(0.6)
@@ -678,17 +892,27 @@ class AutonomousFlowAgent:
                 raw_path_view = str(self.output_raw_dir / f"step_{step_idx:02d}_raw.png")
                 await self._safe_screenshot(page, raw_path_view)
 
-                # Tìm khu vực tiêu điểm (Card, tiêu đề h1/h2) của view mới với kích thước hợp lý (không lấy container 2000px+)
                 content_bbox = None
                 try:
-                    header_card = await page.query_selector("h1, h2, .card, .dashboard-card, .course-item, table, [role='heading']")
-                    if header_card and await header_card.is_visible():
-                        cb = await header_card.bounding_box()
-                        if cb and cb["width"] > 60:
-                            # Khống chế chiều cao tối đa 350px để khung Spotlight bao bọc vừa vặn, thanh thoát
-                            clamped_h = min(cb["height"], 350.0)
-                            clamped_y = max(0.0, cb["y"])
-                            content_bbox = BoundingBox(x=cb["x"], y=clamped_y, w=cb["width"], h=clamped_h)
+                    # Thuật toán tìm tiêu điểm Viewport ở nửa trên màn hình (y: 60px đến 450px)
+                    find_hero_js = r"""() => {
+                        const candidates = Array.from(document.querySelectorAll('h1, h2, h3, .card, .main-content, table, [role="heading"], .dashboard-card'));
+                        for (const el of candidates) {
+                            const r = el.getBoundingClientRect();
+                            if (r.width > 80 && r.height > 20 && r.top >= 50 && r.top <= 450 && r.left >= 200) {
+                                return {
+                                    x: Math.round(r.left),
+                                    y: Math.round(r.top),
+                                    w: Math.round(r.width),
+                                    h: Math.min(Math.round(r.height), 320)
+                                };
+                            }
+                        }
+                        return null;
+                    }"""
+                    hero_box = await page.evaluate(find_hero_js)
+                    if hero_box:
+                        content_bbox = BoundingBox(x=hero_box["x"], y=hero_box["y"], w=hero_box["w"], h=hero_box["h"])
                 except Exception:
                     pass
 
@@ -707,7 +931,6 @@ class AutonomousFlowAgent:
                     )
                 )
 
-                # Giữ vị trí đầu trang để bước tiếp theo click menu mượt mà, không bị kẹt
                 try:
                     await page.evaluate("window.scrollTo({ top: 0, behavior: 'instant' })")
                 except Exception:

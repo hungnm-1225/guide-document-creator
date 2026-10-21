@@ -49,9 +49,13 @@ class FeatureModule(BaseModel):
     name: str
     selector: str
     url_target: Optional[str] = None
-    category: Optional[str] = None
+    category: Optional[str] = None  # 'Menu bên trái', 'Menu bên phải', 'Thanh trên', 'Khóa học', 'Chức năng'
     description: Optional[str] = None
     bounding_box: Optional[BoundingBox] = None
+    is_expandable: bool = Field(False, description="Menu cha dạng accordion/folder chứa các menu con")
+    parent_index: Optional[int] = Field(None, description="Index của menu cha nếu đây là menu con")
+    sub_features: List[Dict[str, Any]] = Field(default_factory=list, description="Danh sách các menu con thuộc menu cha này")
+    location: Optional[str] = Field("left", description="Vị trí layout: 'left', 'right', 'top', 'center', 'bottom'")
 
 
 class SiteKnowledgeMap(BaseModel):
@@ -62,7 +66,12 @@ class SiteKnowledgeMap(BaseModel):
     dashboard_url: Optional[str] = None
     dashboard_title: Optional[str] = None
     dashboard_screenshot_path: Optional[str] = None
+    landing_screenshot_path: Optional[str] = None
+    default_landing_module: Optional[str] = Field(None, description="Tên phân hệ mặc định mà người dùng đang đứng ngay sau đăng nhập (ví dụ: 'Dashboard' hoặc 'Trang chủ')")
     discovered_features: List[FeatureModule] = Field(default_factory=list)
+    left_sidebar_features: List[FeatureModule] = Field(default_factory=list)
+    right_sidebar_features: List[FeatureModule] = Field(default_factory=list)
+    top_nav_features: List[FeatureModule] = Field(default_factory=list)
     recommended_walkthroughs: List[str] = Field(default_factory=list)
 
 

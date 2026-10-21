@@ -7,6 +7,13 @@ import json
 import asyncio
 from pathlib import Path
 from typing import Optional, List
+
+# Khắc phục lỗi ConnectionResetError [WinError 10054] do ProactorEventLoop trên Windows khi client đóng tab/kết nối đột ngột
+if sys.platform == "win32":
+    try:
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    except Exception:
+        pass
 import typer
 from rich.console import Console
 from rich.panel import Panel

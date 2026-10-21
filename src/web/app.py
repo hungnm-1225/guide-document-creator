@@ -4,10 +4,18 @@ Giao diện trực quan cao cấp, Widescreen Full-Width (không khoảng trắn
 sử dụng chuẩn Typography Roboto, Custom Video Player tự chế và nút ẩn/hiện mật khẩu.
 """
 import os
+import sys
 import shutil
 import json
 import asyncio
 from pathlib import Path
+
+# Khắc phục lỗi ConnectionResetError [WinError 10054] do ProactorEventLoop trên Windows khi client đóng tab/kết nối đột ngột
+if sys.platform == "win32":
+    try:
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    except Exception:
+        pass
 from typing import Optional, List, Dict, Any
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.responses import HTMLResponse, FileResponse, JSONResponse

@@ -136,12 +136,24 @@ QUY TẮC BẢO MẬT & CHUYÊN NGHIỆP TUYỆT ĐỐI (BẮT BUỘC):
        - voiceover_script: "Sau đó, bạn nhấn nút Đăng nhập để truy cập vào hệ thống." (chỉ 1 câu ngắn gọn!)
 2. LOẠI BỎ CÂU RÁC SÁO RỖNG:
    - TUYỆT ĐỐI KHÔNG sinh các câu như "Quan sát kỹ vị trí khung viền đỏ", "Nhìn vào ô màu đỏ", "Bấm vào khung viền". Hãy mô tả theo đúng tên nút và mục đích nghiệp vụ của phần mềm!
-3. THUYẾT MINH CHI TIẾT & GIẢI THÍCH Ý NGHĨA CHỨC NĂNG (KHI ĐÃ VÀO PHÂN HỆ CHÍNH):
-   - Chỉ khi thao tác là truy cập một chức năng bên trong hệ thống (Dashboard, Menu, Khóa học, Kho code, Cài đặt, v.v.):
-   - Lúc này mới áp dụng GHI CHÚ NGƯỜI DÙNG: "{user_notes or 'Không có'}". Lời thoại và mô tả giải thích sâu sắc, tự nhiên:
-     * Chức năng này tên là gì và có ý nghĩa, vai trò gì đối với người dùng?
-     * Trên màn hình của chức năng đó đang có những thông tin, dữ liệu hay công cụ chính nào?
-     * Hướng dẫn cách theo dõi và khai thác chức năng đó để công việc/học tập đạt hiệu quả cao nhất.
+3. THUYẾT MINH CHI TIẾT & PHÂN VAI RÕ RÀNG CHO BƯỚC CLICK VÀ BƯỚC VIEW:
+   - Khi hành động là [CLICK] vào menu/phân hệ:
+     * Lời thoại thuyết minh (voiceover_script) chỉ cần ngắn gọn, dứt khoát (khoảng 4-6 giây) thông báo điều hướng sang phân hệ đó.
+     * TUYỆT ĐỐI KHÔNG giải thích dông dài toàn bộ chi tiết chức năng ở bước click!
+   - Khi hành động là [CUSTOM] khám phá giao diện (view-...):
+     * Đây là nơi tập trung thuyết minh sâu sắc, sinh động theo đúng Ghi Chú Nghiệp Vụ ("{user_notes or 'Không có'}"):
+       - Tên phân hệ, ý nghĩa và vai trò cốt lõi.
+       - Các khu vực dữ liệu, chỉ số thống kê hoặc các nút công cụ chính trên màn hình.
+       - Cách người dùng khai thác phân hệ đó hiệu quả nhất.
+4. ĐA DẠNG HÓA TỪ NỐI MỞ ĐẦU (CHỐNG LẶP TỪ TUYỆT ĐỐI):
+   - TUYỆT ĐỐI KHÔNG mở đầu liên tục các câu bằng "Bây giờ, hãy...", "Bây giờ, chúng ta...", "Tiếp theo, bạn...".
+   - Hãy luân phiên thay đổi các cách mở đầu tự nhiên, linh hoạt như một thuyết trình viên chuyên nghiệp:
+     * "Tại giao diện này, ..."
+     * "Để tiếp tục, bạn nhấn chọn ..."
+     * "Quan sát trên thanh điều hướng, ..."
+     * "Khu vực này mang đến cho bạn ..."
+     * "Đối với phân hệ này, ..."
+     * "Khi chuyển sang mục ..."
 
 Nhiệm vụ:
 Tạo nội dung hướng dẫn cho bước này ở cả hai ngôn ngữ: Tiếng Việt (vi) và Tiếng Anh (en).
@@ -267,7 +279,7 @@ Yêu cầu xuất ra DUY NHẤT một chuỗi JSON hợp lệ theo định dạn
                 voice_vi = f"Tiếp theo, bạn nhập thông tin cần thiết vào ô {target_name}."
                 voice_en = f"Next, enter the required information into the {target_name} field."
 
-        elif act_type == "click":
+        elif act_type in ("click", "custom"):
             if is_login_btn:
                 title_vi = "Nhấn nút Đăng nhập"
                 title_en = "Click Login"
@@ -277,46 +289,36 @@ Yêu cầu xuất ra DUY NHẤT một chuỗi JSON hợp lệ theo định dạn
                 slide_en = "Click Login to enter the system."
                 voice_vi = "Sau đó, bạn nhấn nút Đăng nhập để truy cập vào hệ thống."
                 voice_en = "Then, click the Login button to enter the system."
-            elif "menu bên trái" in txt_lower:
-                clean_name = target_name.replace("Mục ", "").replace(" trên Menu bên trái", "").strip()
-                title_vi = f"Truy cập {clean_name} trên Menu bên trái"
-                title_en = f"Access {clean_name} from Left Menu"
-                desc_vi = f"Tại thanh điều hướng bên trái màn hình, nhấp vào mục '{clean_name}' để chuyển tới giao diện chức năng tương ứng."
-                desc_en = f"On the left navigation menu, click on '{clean_name}' to navigate to this feature module."
-                slide_vi = f"Mở chức năng: {clean_name} trên Menu bên trái."
-                slide_en = f"Access: {clean_name} on left sidebar."
-                voice_vi = f"Tại thanh điều hướng bên trái, bạn nhấp vào mục {clean_name} để khám phá các công cụ và nội dung của chức năng này."
-                voice_en = f"From the left navigation menu, click on {clean_name} to explore this feature and its available tools."
-            elif "khám phá chi tiết giao diện" in txt_lower or "giao diện" in txt_lower or "view" in txt_lower:
-                clean_target = target_name.replace("Khám phá chi tiết giao diện ", "").split(":")[0].strip()
-                title_vi = f"Khám phá giao diện {clean_target}"
-                title_en = f"Explore {clean_target} Interface"
-                desc_vi = f"Giao diện phân hệ '{clean_target}' hiển thị toàn bộ các thông tin tổng quan, dữ liệu nghiệp vụ và các công cụ tương tác chính. Người dùng có thể quan sát tiến độ, kiểm tra các hạng mục và thực hiện các tác vụ chuyên môn tại đây."
-                desc_en = f"The '{clean_target}' interface presents an overview of core metrics, data items, and functional tools for users to track progress and complete workflows."
-                slide_vi = f"Giao diện {clean_target}: Theo dõi dữ liệu & công cụ nghiệp vụ."
-                slide_en = f"{clean_target} Interface: Overview and operational tools."
-                voice_vi = f"Chào mừng bạn đến với phân hệ {clean_target}. Tại giao diện này, hệ thống cung cấp đầy đủ các thông tin và công cụ cần thiết để bạn quản lý công việc và thao tác hiệu quả."
-                voice_en = f"Welcome to the {clean_target} module. Here you can explore all relevant data, tools, and options to manage your work effectively."
-            elif "menu" in txt_lower or "thanh điều hướng" in txt_lower or "sidebar" in txt_lower:
-                clean_name = target_name.replace("Mục ", "").replace(" trên Menu bên trái", "").replace(" trên thanh điều hướng", "").strip()
+            elif "khám phá chi tiết giao diện" in txt_lower or "giao diện" in txt_lower or "view" in txt_lower or act_type == "custom":
+                clean_target = target_name.replace("Khám phá chi tiết giao diện ", "").replace("Giao diện ", "").split(":")[0].strip()
+                title_vi = f"Khám phá phân hệ {clean_target}"
+                title_en = f"Explore {clean_target} Module"
+                desc_vi = f"Giao diện phân hệ '{clean_target}' hiển thị toàn bộ các thông tin tổng quan, số liệu thống kê và công cụ nghiệp vụ chính giúp người dùng theo dõi và thao tác hiệu quả."
+                desc_en = f"The '{clean_target}' interface displays comprehensive data metrics and functional tools for users to work efficiently."
+                slide_vi = f"Phân hệ {clean_target}: Dữ liệu tổng quan & công cụ nghiệp vụ."
+                slide_en = f"{clean_target} Module: Data overview and operational tools."
+                voice_vi = f"Tại khu vực {clean_target}, hệ thống cung cấp bức tranh tổng thể cùng các công cụ cần thiết để bạn quản lý và hoàn thành các mục tiêu của mình."
+                voice_en = f"In the {clean_target} area, the system provides a comprehensive overview and necessary tools to track your tasks."
+            elif "menu" in txt_lower or "thanh điều hướng" in txt_lower or "sidebar" in txt_lower or "mục" in txt_lower:
+                clean_name = target_name.replace("Mục ", "").replace(" trên Menu bên trái", "").replace(" trên thanh điều hướng", "").replace(" trên giao diện", "").strip()
                 title_vi = f"Truy cập phân hệ {clean_name}"
                 title_en = f"Access {clean_name} Section"
-                desc_vi = f"Trên thanh điều hướng của hệ thống, nhấp vào mục '{clean_name}' để chuyển tới khu vực làm việc tương ứng."
-                desc_en = f"On the navigation bar, click on '{clean_name}' to access this workspace section."
-                slide_vi = f"Mở chức năng: {clean_name} trên thanh điều hướng."
-                slide_en = f"Open section: {clean_name}."
-                voice_vi = f"Tại thanh điều hướng, bạn nhấp vào mục {clean_name} để truy cập vào khu vực chức năng này."
-                voice_en = f"On the navigation bar, click on {clean_name} to enter this feature area."
+                desc_vi = f"Nhấp vào '{clean_name}' trên thanh điều hướng để chuyển sang phân hệ này."
+                desc_en = f"Click on '{clean_name}' in the navigation menu to switch to this section."
+                slide_vi = f"Truy cập: {clean_name}."
+                slide_en = f"Access: {clean_name}."
+                voice_vi = f"Quan sát thanh điều hướng, bạn nhấn chọn mục {clean_name}."
+                voice_en = f"Looking at the navigation menu, select {clean_name}."
             else:
                 clean_name = target_name.replace("Nút ", "").replace("Mục ", "").strip()
                 title_vi = f"Nhấp vào {clean_name}"
                 title_en = f"Click on {clean_name}"
-                desc_vi = f"Di chuyển con trỏ chuột đến '{clean_name}' trên giao diện và nhấn chuột trái để thực hiện tác vụ."
-                desc_en = f"Move your cursor to '{clean_name}' and click to perform this action."
+                desc_vi = f"Di chuyển con trỏ chuột đến '{clean_name}' và nhấn chuột trái."
+                desc_en = f"Move cursor to '{clean_name}' and click."
                 slide_vi = f"Thao tác: {clean_name}."
                 slide_en = f"Action: {clean_name}."
-                voice_vi = f"Bây giờ, bạn nhấp vào mục {clean_name} trên màn hình để tiếp tục."
-                voice_en = f"Now, click on {clean_name} on the screen to proceed."
+                voice_vi = f"Để tiếp tục, bạn nhấn vào {clean_name} trên màn hình."
+                voice_en = f"To proceed, click on {clean_name} on the screen."
 
         else:
             title_vi = f"Thao tác trên {target_name}"
@@ -427,13 +429,15 @@ Chỉ xuất ra JSON, không thêm văn bản khác.
         goal: str,
         user_notes: Optional[str] = None,
         page_title: str = "",
-        page_url: str = ""
+        page_url: str = "",
+        current_landing_module: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
-        AI Planner linh hoạt 100% (Universal Dynamic Planner):
-        Dựa trên các phần tử DOM thực tế quét được trên màn hình, kết hợp với mục tiêu (goal)
-        và ghi chú (user_notes) của người dùng để lập kế hoạch chuỗi bước đi tối ưu.
-        Thích ứng với mọi website trong hệ sinh thái (LMS, Kho code, IDE, Workspace, Portal...).
+        AI Strategic Planner linh hoạt 100% (Universal Dynamic Strategic Planner):
+        Dựa trên bản đồ địa hình thực tế (DOM + Layout) và trạng thái hiện tại (current_landing_module),
+        kết hợp với mục tiêu (goal) và ghi chú (user_notes) của người dùng để lập lộ trình thông minh.
+        - Triệt tiêu bước click thừa vào chính phân hệ đang đứng sẵn.
+        - Hiểu rõ yêu cầu về vị trí không gian (ví dụ: 'menu bên trái', 'menu bên phải', 'thanh trên').
         """
         # Chuẩn hóa danh sách phần tử
         normalized_elements = []
@@ -447,32 +451,43 @@ Chỉ xuất ra JSON, không thêm văn bản khác.
             name = d.get("name") or d.get("text", "")
             if name and len(name.strip()) > 1:
                 normalized_elements.append({
+                    "index": d.get("index"),
                     "name": name.strip(),
                     "tag": d.get("tag", ""),
                     "category": d.get("category", ""),
+                    "location": d.get("location", "center"),
                     "selector": d.get("selector", ""),
+                    "is_expandable": d.get("is_expandable", False),
                     "url_target": d.get("url_target")
                 })
 
         if not self.client or not self.api_key:
-            return self._semantic_fallback_plan(normalized_elements, goal, user_notes)
+            return self._semantic_fallback_plan(normalized_elements, goal, user_notes, current_landing_module)
 
         compact_elements = normalized_elements[:45]
         prompt = f"""
-Bạn là chuyên gia tự động hóa trình duyệt và kỹ sư thiết kế kịch bản hướng dẫn người dùng.
+Bạn là chuyên gia tự động hóa trình duyệt và kỹ sư thiết kế kịch bản hướng dẫn người dùng chuyên nghiệp.
 Website đang thao tác: "{page_title}" ({page_url})
 Mục tiêu hướng dẫn của người dùng: "{goal}"
 Ghi chú nghiệp vụ / Yêu cầu chi tiết từ người dùng: "{user_notes or 'Không có ghi chú thêm'}"
+PHÂN HỆ NGƯỜI DÙNG ĐANG ĐỨNG SẴN TRÊN MÀN HÌNH HIỆN TẠI: "{current_landing_module or 'Dashboard'}"
 
-Danh sách các phần tử tương tác THỰC TẾ đang có trên giao diện website hiện tại:
+Danh sách các phần tử tương tác THỰC TẾ đã được AI Trinh Sát lập bản đồ trên giao diện:
 {json.dumps(compact_elements, ensure_ascii=False, indent=2)}
 
-Nhiệm vụ:
-Phân tích kỹ lưỡng mục tiêu và các ghi chú của người dùng để chọn ra chuỗi các phần tử CÓ THỰC trên giao diện này cần tương tác.
-- Nếu người dùng yêu cầu duyệt qua các chức năng / menu (ví dụ menu bên trái): Hãy chọn các mục menu có thật trên trang phù hợp với yêu cầu.
-- Nếu người dùng yêu cầu thực hiện một quy trình cụ thể (như tạo repo, chỉnh sửa, xem báo cáo, mở bài học): Hãy chọn tuần tự các bước hợp lý để hoàn thành quy trình đó.
+QUY TẮC LẬP LỘ TRÌNH THÔNG MINH (BẮT BUỘC):
+1. KHÔNG CLICK LẠI PHÂN HỆ ĐANG ĐỨNG SẴN:
+   - Người dùng hiện tại ĐÃ ĐANG Ở SẴN phân hệ "{current_landing_module or 'Dashboard'}".
+   - TUYỆT ĐỐI KHÔNG lập bước click lại vào chính nút "{current_landing_module or 'Dashboard'}" trên menu vì rất thừa thãi!
+   - Hãy chọn các phân hệ TIẾP THEO mà người dùng yêu cầu hoặc các tính năng kế tiếp trong menu.
+2. ĐÁP ỨNG ĐÚNG VỊ TRÍ KHÔNG GIAN ĐƯỢC YÊU CẦU:
+   - Nếu người dùng yêu cầu "menu bên trái": Ưu tiên các phần tử có location: "left" / category: "Menu bên trái".
+   - Nếu người dùng yêu cầu "menu bên phải": Ưu tiên các phần tử có location: "right" / category: "Menu bên phải".
+   - Nếu người dùng yêu cầu "thanh trên": Ưu tiên các phần tử có location: "top" / category: "Thanh điều hướng trên".
+3. LẬP LỘ TRÌNH TINH GỌN (3 - 5 bước chất lượng cao):
+   - Chọn ra các chức năng trọng tâm nhất có trên trang web này để giới thiệu.
 
-Yêu cầu xuất ra DUY NHẤT một mảng JSON các bước (tối đa 4 - 6 bước trọng tâm):
+Yêu cầu xuất ra DUY NHẤT một mảng JSON các bước:
 [
   {{
     "target_name": "Tên text chính xác của phần tử trên màn hình",
@@ -516,17 +531,19 @@ Chỉ trả về chuỗi JSON hợp lệ, không thêm văn bản giải thích.
         self,
         discovered_elements: List[Dict[str, Any]],
         goal: str,
-        user_notes: Optional[str] = None
+        user_notes: Optional[str] = None,
+        current_landing_module: Optional[str] = None
     ) -> List[Dict[str, Any]]:
         """
         Bộ lập kế hoạch ngữ nghĩa dự phòng (Universal Semantic Matcher):
         Không hardcode! Tự động trích xuất các từ khóa từ yêu cầu và ghi chú của người dùng,
-        rồi so khớp động với các phần tử thực tế trên DOM.
+        loại bỏ bước click vào chính phân hệ đang đứng sẵn, so khớp động với các phần tử thực tế trên DOM.
         """
         combined = f"{goal} {user_notes or ''}".lower()
         import re
         quotes = re.findall(r'[\"“\'](.*?)[\"”\']', f"{goal} {user_notes or ''}")
         extracted_terms = [q.strip().lower() for q in quotes if len(q.strip()) > 1]
+        cur_landing = (current_landing_module or "dashboard").lower().strip()
 
         # Tách các từ khóa có nghĩa từ prompt
         words = [w for w in re.split(r'[,.\s;:()]+', combined) if len(w) > 2 and w not in ["đăng", "nhập", "sau", "đó", "hướng", "dẫn", "các", "từng", "mở", "xem", "cho", "vào", "một", "nhiều"]]
@@ -541,6 +558,9 @@ Chỉ trả về chuỗi JSON hợp lệ, không thêm văn bản giải thích.
                 continue
             low = el_text.lower()
             if low in seen_names:
+                continue
+            # BỎ QUA nếu trùng với phân hệ đang đứng sẵn (ví dụ đang ở sẵn Dashboard)
+            if low == cur_landing or cur_landing in low:
                 continue
 
             # Ưu tiên khớp thực thể trong ngoặc kép
@@ -567,7 +587,7 @@ Chỉ trả về chuỗi JSON hợp lệ, không thêm văn bản giải thích.
             for el in discovered_elements:
                 el_text = (el.get("name") or el.get("text") or "").strip()
                 low = el_text.lower()
-                if low in seen_names or len(el_text) < 2:
+                if low in seen_names or len(el_text) < 2 or low == cur_landing or cur_landing in low:
                     continue
                 # Nhận diện phần tử điều hướng
                 cat = el.get("category", "")
@@ -582,14 +602,14 @@ Chỉ trả về chuỗi JSON hợp lệ, không thêm văn bản giải thích.
                         "open_view_after": True,
                         "priority": 3
                     })
-                    if len(matched_elements) >= 6:
+                    if len(matched_elements) >= 5:
                         break
 
         # 3. Fallback lấy các phần tử đầu tiên nếu chưa có
         if not matched_elements:
             for el in discovered_elements[:4]:
                 el_text = (el.get("name") or el.get("text") or "").strip()
-                if el_text:
+                if el_text and el_text.lower() != cur_landing:
                     matched_elements.append({
                         "target_name": el_text,
                         "action_type": "click",
@@ -598,4 +618,4 @@ Chỉ trả về chuỗi JSON hợp lệ, không thêm văn bản giải thích.
                         "open_view_after": True
                     })
 
-        return matched_elements[:6]
+        return matched_elements[:5]
