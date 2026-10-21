@@ -144,6 +144,26 @@ def run_demo(
     )
 
 
+def _free_port_if_in_use(port: int = 8000):
+    """Tự động kiểm tra và giải phóng cổng nếu có tiến trình cũ đang chiếm dụng (tránh lỗi Errno 10048)"""
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        in_use = s.connect_ex(("127.0.0.1", port)) == 0
+    if in_use:
+        try:
+            import subprocess
+            res = subprocess.run(f"netstat -ano | findstr :{port}", shell=True, capture_output=True, text=True)
+            for line in res.stdout.strip().splitlines():
+                if "LISTENING" in line:
+                    parts = line.strip().split()
+                    pid = parts[-1]
+                    if pid.isdigit() and int(pid) != os.getpid():
+                        console.print(f"[yellow]⚠️ Cổng {port} đang bị chiếm bởi PID {pid}. Đang tự động giải phóng...[/yellow]")
+                        subprocess.run(f"taskkill /F /PID {pid}", shell=True, capture_output=True)
+        except Exception:
+            pass
+
+
 @app.command("web")
 def run_web(
     host: str = typer.Option("127.0.0.1", "--host", "-h", help="Host lắng nghe của Web Server"),
@@ -153,6 +173,9 @@ def run_web(
     """Khởi chạy giao diện Web trực quan (Studio Dashboard) trên trình duyệt."""
     import uvicorn
     import webbrowser
+
+    # Tự động giải phóng cổng 8000 nếu có tiến trình cũ bị treo ngầm
+    _free_port_if_in_use(port)
 
     console.print(Panel.fit(
         f"[bold green]🚀 GUIDE CREATOR STUDIO ĐANG CHẠY[/bold green]\n\n"

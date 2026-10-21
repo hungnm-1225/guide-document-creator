@@ -807,6 +807,21 @@ class AutonomousFlowAgent:
                 sub_names_str = ", ".join([s["name"] for s in sub_candidates[:3]])
                 sub_bbox = BoundingBox(x=first_sub["x"], y=first_sub["y"], w=first_sub["w"], h=first_sub["h"])
 
+                # Tìm phần tử chính xác của menu con trên DOM để click và lấy BoundingBox thực tế
+                actual_sub_el = None
+                try:
+                    for s_cand in sub_candidates:
+                        cand_el = await page.query_selector(f"aside a:has-text('{s_cand['name']}'), nav a:has-text('{s_cand['name']}'), [role='button']:has-text('{s_cand['name']}')")
+                        if cand_el and await cand_el.is_visible():
+                            actual_sub_el = cand_el
+                            first_sub = s_cand
+                            b = await cand_el.bounding_box()
+                            if b:
+                                sub_bbox = BoundingBox(x=b["x"], y=b["y"], w=b["width"], h=b["height"])
+                            break
+                except Exception:
+                    pass
+
                 actions.append(
                     RecordedAction(
                         step_number=step_idx,
@@ -824,12 +839,19 @@ class AutonomousFlowAgent:
 
                 # Click vào menu con đầu tiên để vào giao diện nghiệp vụ thực tế
                 try:
-                    sub_el = await page.query_selector(f"a:has-text('{first_sub['name']}'), button:has-text('{first_sub['name']}')")
-                    if sub_el and await sub_el.is_visible():
-                        await sub_el.click(timeout=6000)
-                        await asyncio.sleep(1.5)
-                except Exception:
-                    pass
+                    if actual_sub_el:
+                        await actual_sub_el.click(timeout=6000)
+                    else:
+                        sub_el = await page.query_selector(f"a:has-text('{first_sub['name']}'), button:has-text('{first_sub['name']}')")
+                        if sub_el and await sub_el.is_visible():
+                            await sub_el.click(timeout=6000)
+                    await asyncio.sleep(2.0)
+                    try:
+                        await page.wait_for_load_state("domcontentloaded", timeout=4000)
+                    except Exception:
+                        pass
+                except Exception as e:
+                    console.print(f"[yellow]⚠️ Lỗi click menu con: {e}[/yellow]")
 
                 # Chụp view của phân hệ con vừa được chọn
                 step_idx += 1

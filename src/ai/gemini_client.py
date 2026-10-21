@@ -477,15 +477,14 @@ Danh sách các phần tử tương tác THỰC TẾ đã được AI Trinh Sát
 
 QUY TẮC LẬP LỘ TRÌNH THÔNG MINH (BẮT BUỘC):
 1. KHÔNG CLICK LẠI PHÂN HỆ ĐANG ĐỨNG SẴN:
-   - Người dùng hiện tại ĐÃ ĐANG Ở SẴN phân hệ "{current_landing_module or 'Dashboard'}".
-   - TUYỆT ĐỐI KHÔNG lập bước click lại vào chính nút "{current_landing_module or 'Dashboard'}" trên menu vì rất thừa thãi!
-   - Hãy chọn các phân hệ TIẾP THEO mà người dùng yêu cầu hoặc các tính năng kế tiếp trong menu.
+   - Người dùng hiện tại ĐÃ ĐANG Ở SẴN phân hệ "{current_landing_module or 'Trang chủ'}".
+   - TUYỆT ĐỐI KHÔNG lập bước click lại vào chính nút "{current_landing_module or 'Trang chủ'}" trên thanh điều hướng/menu vì thao tác này thừa thãi!
+   - Hãy chọn các phân hệ TIẾP THEO trên menu để khám phá.
 2. ĐÁP ỨNG ĐÚNG VỊ TRÍ KHÔNG GIAN ĐƯỢC YÊU CẦU:
-   - Nếu người dùng yêu cầu "menu bên trái": Ưu tiên các phần tử có location: "left" / category: "Menu bên trái".
-   - Nếu người dùng yêu cầu "menu bên phải": Ưu tiên các phần tử có location: "right" / category: "Menu bên phải".
-   - Nếu người dùng yêu cầu "thanh trên": Ưu tiên các phần tử có location: "top" / category: "Thanh điều hướng trên".
-3. LẬP LỘ TRÌNH TINH GỌN (3 - 5 bước chất lượng cao):
-   - Chọn ra các chức năng trọng tâm nhất có trên trang web này để giới thiệu.
+   - Nếu người dùng yêu cầu tương tác tại khu vực nào (ví dụ "menu bên trái", "menu bên phải", "thanh trên", "thanh công cụ", "footer"...), AI PHẢI lọc đúng các phần tử có location và category tương ứng với khu vực đó.
+3. KHÔNG ĐƯỢC NHẢY CÓC - ĐI TUẦN TỰ VÀ ĐẦY ĐỦ:
+   - Khi người dùng yêu cầu "truy cập từng chức năng ở Menu" hoặc "giới thiệu các tính năng", bạn PHẢI lập danh sách tuần tự từ trên xuống dưới theo đúng thứ tự xuất hiện của các phần tử thực tế trên giao diện.
+   - TUYỆT ĐỐI KHÔNG tự ý bỏ qua hoặc nhảy cóc các mục chức năng lớn xuất hiện trên thanh điều hướng. Bao quát đầy đủ toàn bộ các chức năng thuộc phạm vi người dùng yêu cầu.
 
 Yêu cầu xuất ra DUY NHẤT một mảng JSON các bước:
 [
@@ -525,7 +524,7 @@ Chỉ trả về chuỗi JSON hợp lệ, không thêm văn bản giải thích.
         except Exception as e:
             console.print(f"[yellow]⚠️ Lỗi Gemini Planner ({e}), chuyển sang Semantic Fallback Planner...[/yellow]")
 
-        return self._semantic_fallback_plan(normalized_elements, goal, user_notes)
+        return self._semantic_fallback_plan(normalized_elements, goal, user_notes, current_landing_module)
 
     def _semantic_fallback_plan(
         self,
