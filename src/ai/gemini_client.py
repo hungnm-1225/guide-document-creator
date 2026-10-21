@@ -10,6 +10,8 @@ Xử lý hình ảnh screenshot + log hành động để sinh ra nội dung hư
 import os
 import json
 import base64
+import time
+import re
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
@@ -47,7 +49,22 @@ class GeminiAnalyzer:
         self.api_key = api_key or settings.gemini_api_key or os.getenv("GEMINI_API_KEY", "")
         self.model_name = model_name or settings.gemini_model or "gemini-3.5-flash-lite"
         self.client = None
+        self._last_request_time = 0.0
         self._init_client()
+
+    def _wait_for_rate_limit(self, min_interval_seconds: float = 4.2):
+        """
+        Token Bucket / Pacing Guard:
+        Hạn ngạch gói miễn phí (Free Tier) của Gemini là 15 RPM (15 requests per minute).
+        Đảm bảo giữa 2 lượt gọi API luôn cách nhau tối thiểu 4.2 giây (tương đương tối đa ~14 RPM),
+        triệt tiêu 100% việc dồn dập request dẫn đến lỗi 429 RESOURCE_EXHAUSTED.
+        """
+        now = time.time()
+        elapsed = now - self._last_request_time
+        if elapsed < min_interval_seconds:
+            sleep_needed = min_interval_seconds - elapsed
+            time.sleep(sleep_needed)
+        self._last_request_time = time.time()
 
     def _init_client(self):
         """Khởi tạo Google GenAI Client nếu có API key"""
@@ -76,22 +93,35 @@ class GeminiAnalyzer:
         """
         Phân tích multimodal: Ảnh chụp màn hình + Thông số hành động -> JSON song ngữ chuẩn
         Tự động bảo mật thông tin tài khoản/mật khẩu và áp dụng ghi chú nghiệp vụ của người dùng.
+        Có cơ chế Pacing Guard và Exponential Backoff tự động ngủ theo thời gian server yêu cầu khi chạm rate limit.
         """
         # Nếu chưa có API key hoặc client lỗi, dùng Smart Offline Fallback ngay
         if not self.client or not self.api_key:
             return self._smart_offline_step_analysis(action, total_steps, user_notes)
 
-        try:
-            return self._call_gemini_multimodal(action, total_steps, guide_context, user_notes)
-        except Exception as e:
-            console.print(f"[red]⚠️ Lỗi gọi Gemini API (sẽ fallback offline): {e}[/red]")
-            return self._smart_offline_step_analysis(action, total_steps, user_notes)
+        # Áp dụng Pacing Guard (cách nhau tối thiểu 4.2s để không vượt 15 RPM)
+        self._wait_for_rate_limit(min_interval_seconds=4.2)
 
-    @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=2, min=2, max=8),
-        reraise=True,
-    )
+        # Thử gọi API tối đa 4 lần với cơ chế xử lý Rate Limit 429 thông minh
+        for attempt in range(1, 5):
+            try:
+                return self._call_gemini_multimodal(action, total_steps, guide_context, user_notes)
+            except Exception as e:
+                err_msg = str(e)
+                if "429" in err_msg or "RESOURCE_EXHAUSTED" in err_msg:
+                    # Trích xuất số giây retry mà Google yêu cầu (ví dụ: 'Please retry in 37.42s')
+                    retry_match = re.search(r"retry in ([0-9.]+)", err_msg, re.IGNORECASE)
+                    wait_sec = float(retry_match.group(1)) + 2.0 if retry_match else (attempt * 15.0)
+                    console.print(f"[yellow]⏳ [Rate Limit 15 RPM] Đang tạm dừng {wait_sec:.1f}s để hồi phục hạn ngạch Google Gemini (thử lại lần {attempt}/4)...[/yellow]")
+                    time.sleep(wait_sec)
+                    self._last_request_time = time.time()
+                else:
+                    console.print(f"[yellow]⚠️ Lỗi gọi Gemini: {e}. Sẽ thử lại sau 3s...[/yellow]")
+                    time.sleep(3.0)
+
+        console.print("[red]⚠️ Đã hết lượt thử lại Gemini API. Tự động chuyển sang Smart Offline Generator cho bước này.[/red]")
+        return self._smart_offline_step_analysis(action, total_steps, user_notes)
+
     def _call_gemini_multimodal(
         self,
         action: RecordedAction,
@@ -289,16 +319,41 @@ Yêu cầu xuất ra DUY NHẤT một chuỗi JSON hợp lệ theo định dạn
                 slide_en = "Click Login to enter the system."
                 voice_vi = "Sau đó, bạn nhấn nút Đăng nhập để truy cập vào hệ thống."
                 voice_en = "Then, click the Login button to enter the system."
-            elif "khám phá chi tiết giao diện" in txt_lower or "giao diện" in txt_lower or "view" in txt_lower or act_type == "custom":
-                clean_target = target_name.replace("Khám phá chi tiết giao diện ", "").replace("Giao diện ", "").split(":")[0].strip()
+            elif "khám phá chi tiết giao diện" in txt_lower or "khám phá phân hệ" in txt_lower or "giao diện" in txt_lower or "view" in txt_lower or act_type == "custom":
+                clean_target = target_name.replace("Khám phá chi tiết giao diện ", "").replace("Khám phá phân hệ ", "").replace("Giao diện ", "").split(":")[0].strip()
                 title_vi = f"Khám phá phân hệ {clean_target}"
                 title_en = f"Explore {clean_target} Module"
-                desc_vi = f"Giao diện phân hệ '{clean_target}' hiển thị toàn bộ các thông tin tổng quan, số liệu thống kê và công cụ nghiệp vụ chính giúp người dùng theo dõi và thao tác hiệu quả."
+
+                # Trích xuất nội dung thực tế phía sau dấu hai chấm (nếu có ngữ cảnh trinh sát)
+                detail_context = ""
+                if ":" in target_name:
+                    detail_context = target_name.split(":", 1)[1].strip()
+
+                # Đa dạng hóa lời thoại và mô tả theo số thứ tự bước (tránh lặp cụm từ máy móc)
+                step_idx = action.step_number
+                voice_variants_vi = [
+                    f"Tại phân hệ {clean_target}, {detail_context if detail_context else 'bạn có thể theo dõi trực tiếp các thông tin chuyên môn, dữ liệu nghiệp vụ và các tính năng tương tác chính.'}",
+                    f"Giao diện {clean_target} mang đến cho bạn không gian làm việc chuyên biệt, {detail_context if detail_context else 'hỗ trợ tra cứu chi tiết và thực hiện các thao tác một cách thuận tiện.'}",
+                    f"Đối với khu vực {clean_target}, {detail_context if detail_context else 'hệ thống hiển thị rõ ràng các danh mục và công cụ cần thiết để bạn quản lý công việc và học tập.'}",
+                    f"Khi mở phân hệ {clean_target}, {detail_context if detail_context else 'bạn dễ dàng nắm bắt được nội dung cụ thể, các chỉ số quan trọng và các tùy chọn thao tác.'}",
+                    f"Khu vực {clean_target} cung cấp {detail_context if detail_context else 'toàn bộ tài nguyên và chức năng giúp người dùng khai thác tối đa tiện ích của hệ thống.'}",
+                ]
+                desc_variants_vi = [
+                    f"Giao diện phân hệ '{clean_target}' hiển thị {detail_context if detail_context else 'các thông tin tổng quan, số liệu thống kê và công cụ nghiệp vụ giúp người dùng theo dõi và thao tác hiệu quả.'}",
+                    f"Màn hình '{clean_target}' cho phép người dùng {detail_context if detail_context else 'tra cứu chi tiết các dữ liệu, tài liệu và thực hiện các tác vụ chuyên môn.'}",
+                    f"Phân hệ '{clean_target}' cung cấp {detail_context if detail_context else 'các chức năng hỗ trợ chuyên sâu, giúp người dùng quản lý và nắm bắt thông tin nhanh chóng.'}",
+                    f"Tại khu vực '{clean_target}', người dùng có thể {detail_context if detail_context else 'tương tác với các công cụ nghiệp vụ và theo dõi tiến độ một cách trực quan.'}",
+                ]
+
+                chosen_voice_vi = voice_variants_vi[step_idx % len(voice_variants_vi)]
+                chosen_desc_vi = desc_variants_vi[step_idx % len(desc_variants_vi)]
+
+                desc_vi = chosen_desc_vi
                 desc_en = f"The '{clean_target}' interface displays comprehensive data metrics and functional tools for users to work efficiently."
                 slide_vi = f"Phân hệ {clean_target}: Dữ liệu tổng quan & công cụ nghiệp vụ."
                 slide_en = f"{clean_target} Module: Data overview and operational tools."
-                voice_vi = f"Tại khu vực {clean_target}, hệ thống cung cấp bức tranh tổng thể cùng các công cụ cần thiết để bạn quản lý và hoàn thành các mục tiêu của mình."
-                voice_en = f"In the {clean_target} area, the system provides a comprehensive overview and necessary tools to track your tasks."
+                voice_vi = chosen_voice_vi
+                voice_en = f"In the {clean_target} section, the system provides a comprehensive overview and necessary tools to manage your tasks."
             elif "menu" in txt_lower or "thanh điều hướng" in txt_lower or "sidebar" in txt_lower or "mục" in txt_lower:
                 clean_name = target_name.replace("Mục ", "").replace(" trên Menu bên trái", "").replace(" trên thanh điều hướng", "").replace(" trên giao diện", "").strip()
                 title_vi = f"Truy cập phân hệ {clean_name}"

@@ -887,13 +887,35 @@ class AutonomousFlowAgent:
                 except Exception:
                     pass
 
+                # Trích xuất tiêu đề thực tế và mô tả thực tế trên trang con để AI hiểu sâu sắc, không đoán mò
+                sub_page_context = ""
+                try:
+                    extract_ctx_js = r"""() => {
+                        const h1 = document.querySelector('h1, h2');
+                        const title = h1 ? h1.innerText.trim() : document.title;
+                        const p = document.querySelector('main p, article p, .lead, .card p, p');
+                        const snippet = p ? p.innerText.trim().replace(/\s+/g, ' ').substring(0, 150) : '';
+                        const headings = Array.from(document.querySelectorAll('h2, h3, h4, th')).slice(0, 4).map(h => h.innerText.trim()).filter(Boolean);
+                        let res = title;
+                        if (snippet) res += ' - ' + snippet;
+                        if (headings.length) res += ' [Chủ đề: ' + headings.join(', ') + ']';
+                        return res;
+                    }"""
+                    sub_page_context = await page.evaluate(extract_ctx_js)
+                except Exception:
+                    pass
+
+                view_label = f"Khám phá phân hệ {first_sub['name']}"
+                if sub_page_context and len(sub_page_context) > 3:
+                    view_label += f": {sub_page_context}"
+
                 actions.append(
                     RecordedAction(
                         step_number=step_idx,
                         action_type="custom",
                         selector=f"view-{first_sub['name'].lower().replace(' ', '-')}",
                         input_value=None,
-                        element_text=f"Khám phá chi tiết giao diện {first_sub['name']}: Giới thiệu ý nghĩa và cách sử dụng",
+                        element_text=view_label,
                         bounding_box=content_bbox,
                         raw_screenshot_path=raw_path_view,
                         timestamp=time.time(),
@@ -938,13 +960,35 @@ class AutonomousFlowAgent:
                 except Exception:
                     pass
 
+                # Trích xuất tiêu đề thực tế và tóm tắt nội dung trên trang để AI phân tích chính xác theo nghiệp vụ
+                page_actual_context = ""
+                try:
+                    extract_main_ctx_js = r"""() => {
+                        const h1 = document.querySelector('h1, h2');
+                        const title = h1 ? h1.innerText.trim() : document.title;
+                        const p = document.querySelector('main p, article p, .lead, .card p, p');
+                        const snippet = p ? p.innerText.trim().replace(/\s+/g, ' ').substring(0, 150) : '';
+                        const headings = Array.from(document.querySelectorAll('h2, h3, h4, th')).slice(0, 4).map(h => h.innerText.trim()).filter(Boolean);
+                        let res = title;
+                        if (snippet) res += ' - ' + snippet;
+                        if (headings.length) res += ' [Chủ đề: ' + headings.join(', ') + ']';
+                        return res;
+                    }"""
+                    page_actual_context = await page.evaluate(extract_main_ctx_js)
+                except Exception:
+                    pass
+
+                view_label_main = f"Khám phá phân hệ {target_name}"
+                if page_actual_context and len(page_actual_context) > 3:
+                    view_label_main += f": {page_actual_context}"
+
                 actions.append(
                     RecordedAction(
                         step_number=step_idx,
                         action_type="custom",
                         selector=f"view-{target_name.lower().replace(' ', '-')}",
                         input_value=None,
-                        element_text=f"Khám phá chi tiết giao diện {target_name}: Giới thiệu ý nghĩa và cách sử dụng",
+                        element_text=view_label_main,
                         bounding_box=content_bbox,
                         raw_screenshot_path=raw_path_view,
                         timestamp=time.time(),

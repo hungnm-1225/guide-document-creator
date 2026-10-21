@@ -38,10 +38,29 @@ class VieNeuTTSProvider:
         if not cls._init_attempted:
             cls._init_attempted = True
             try:
+                import sys
                 from vieneu import Vieneu
                 mode = getattr(settings, "vieneu_mode", "v3nano")
                 console.print(f"[cyan]🦜 Đang khởi tạo mô hình VieNeu-TTS ({mode})...[/cyan]")
-                cls._engine = Vieneu(mode=mode)
+
+                # Lọc bỏ cảnh báo không cần thiết về HF_TOKEN của thư viện huggingface_hub khi chạy offline
+                class _SilentHFStderr:
+                    def __init__(self, orig):
+                        self.orig = orig
+                    def write(self, s):
+                        if "HF_TOKEN" in s or "unauthenticated requests" in s:
+                            return
+                        self.orig.write(s)
+                    def flush(self):
+                        self.orig.flush()
+
+                old_stderr = sys.stderr
+                try:
+                    sys.stderr = _SilentHFStderr(old_stderr)
+                    cls._engine = Vieneu(mode=mode)
+                finally:
+                    sys.stderr = old_stderr
+
                 console.print("[green]✨ VieNeu-TTS đã khởi tạo thành công![/green]")
             except Exception as e:
                 console.print(f"[yellow]⚠️ Chưa thể nạp VieNeu-TTS cục bộ ({e}). Tự động dùng Edge-TTS dự phòng.[/yellow]")
