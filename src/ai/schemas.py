@@ -45,6 +45,7 @@ class ReconReport(BaseModel):
 
 class FeatureModule(BaseModel):
     """Một chức năng hoặc ngóc ngách cụ thể được AI Pioneer Scout khám phá"""
+    index: Optional[int] = None
     name: str
     selector: str
     url_target: Optional[str] = None

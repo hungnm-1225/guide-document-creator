@@ -116,19 +116,32 @@ Thông tin hành động:
 - GHI CHÚ / YÊU CẦU NGHIỆP VỤ BỔ SUNG TỪ NGƯỜI DÙNG: "{user_notes or 'Không có ghi chú thêm'}"
 
 QUY TẮC BẢO MẬT & CHUYÊN NGHIỆP TUYỆT ĐỐI (BẮT BUỘC):
-1. BẢO MẬT TÀI KHOẢN & MẬT KHẨU:
+1. BẢO MẬT VÀ NGẮN GỌN TUYỆT ĐỐI CHO CÁC BƯỚC ĐĂNG NHẬP / FORM XÁC THỰC:
    - TUYỆT ĐỐI KHÔNG BAO GIỜ đọc hoặc in chuỗi username, email, mật khẩu thật hoặc chuỗi mã hóa ("hsdttemd", "Leanbot@2024", "••••••••") ra văn bản, slide hay lời thoại video!
-   - Nếu thao tác là nhập tài khoản/email: Hãy viết "Nhập tên tài khoản hoặc email của bạn vào ô đăng nhập".
-   - Nếu thao tác là nhập mật khẩu: Hãy viết "Nhập mật khẩu bảo mật của bạn vào ô Mật khẩu".
+   - ĐẶC BIỆT LƯU Ý VỀ ĐỘ DÀI VÀ NGỮ CẢNH: Các bước đăng nhập phải CỰC KỲ NGẮN GỌN, CHÍNH XÁC theo thao tác nguyên tử (atomic), TUYỆT ĐỐI KHÔNG văn vở, không phóng đại nói rằng "để bắt đầu truy cập vào hệ thống..." khi người dùng mới chỉ đang nhập tên tài khoản hoặc mật khẩu!
+     * Thao tác nhập Tên tài khoản / Email:
+       - title: "Nhập tên tài khoản hoặc email"
+       - description: "Nhập tên tài khoản hoặc địa chỉ email của bạn vào ô đăng nhập."
+       - slide_summary: "Nhập tên tài khoản hoặc email vào ô đăng nhập."
+       - voiceover_script: "Đầu tiên, bạn nhập tên tài khoản hoặc email vào ô đăng nhập." (chỉ 1 câu ngắn gọn!)
+     * Thao tác nhập Mật khẩu:
+       - title: "Nhập mật khẩu"
+       - description: "Nhập mật khẩu bảo mật của bạn vào ô Mật khẩu."
+       - slide_summary: "Nhập mật khẩu vào ô Mật khẩu."
+       - voiceover_script: "Tiếp theo, nhập mật khẩu của bạn vào ô Mật khẩu." (chỉ 1 câu ngắn gọn!)
+     * Thao tác nhấn Đăng nhập (Submit Login):
+       - title: "Nhấn nút Đăng nhập"
+       - description: "Nhấn nút 'Đăng nhập' (Login) để xác thực và truy cập vào hệ thống."
+       - slide_summary: "Nhấn nút Đăng nhập để vào hệ thống."
+       - voiceover_script: "Sau đó, bạn nhấn nút Đăng nhập để truy cập vào hệ thống." (chỉ 1 câu ngắn gọn!)
 2. LOẠI BỎ CÂU RÁC SÁO RỖNG:
    - TUYỆT ĐỐI KHÔNG sinh các câu như "Quan sát kỹ vị trí khung viền đỏ", "Nhìn vào ô màu đỏ", "Bấm vào khung viền". Hãy mô tả theo đúng tên nút và mục đích nghiệp vụ của phần mềm!
-3. THUYẾT MINH CHI TIẾT & GIẢI THÍCH Ý NGHĨA CHỨC NĂNG (BẮT BUỘC THEO GHI CHÚ NGƯỜI DÙNG):
-   - Khi bước thao tác là truy cập một chức năng trên Menu bên trái hoặc mở khám phá giao diện (ví dụ Dashboard, My Courses, Khóa học, Khung năng lực, Không gian học tập...):
-   - Lời thoại thuyết minh (voiceover_script) và phần mô tả (description) PHẢI giải thích sâu sắc, tự nhiên:
-     * Chức năng này tên là gì và có ý nghĩa, vai trò gì đối với học viên/người dùng?
-     * Trên màn hình của chức năng đó đang có những thông tin, chỉ số hay công cụ chính nào?
-     * Hướng dẫn học viên cách theo dõi và khai thác chức năng đó để việc học đạt hiệu quả cao nhất.
-   - TUYỆT ĐỐI KHÔNG thuyết minh qua loa, đại khái hay cụt lủn! Lời thoại phải đủ dài, truyền cảm và mang tính sư phạm cao.
+3. THUYẾT MINH CHI TIẾT & GIẢI THÍCH Ý NGHĨA CHỨC NĂNG (KHI ĐÃ VÀO PHÂN HỆ CHÍNH):
+   - Chỉ khi thao tác là truy cập một chức năng bên trong hệ thống (Dashboard, Menu, Khóa học, Kho code, Cài đặt, v.v.):
+   - Lúc này mới áp dụng GHI CHÚ NGƯỜI DÙNG: "{user_notes or 'Không có'}". Lời thoại và mô tả giải thích sâu sắc, tự nhiên:
+     * Chức năng này tên là gì và có ý nghĩa, vai trò gì đối với người dùng?
+     * Trên màn hình của chức năng đó đang có những thông tin, dữ liệu hay công cụ chính nào?
+     * Hướng dẫn cách theo dõi và khai thác chức năng đó để công việc/học tập đạt hiệu quả cao nhất.
 
 Nhiệm vụ:
 Tạo nội dung hướng dẫn cho bước này ở cả hai ngôn ngữ: Tiếng Việt (vi) và Tiếng Anh (en).
@@ -227,23 +240,23 @@ Yêu cầu xuất ra DUY NHẤT một chuỗi JSON hợp lệ theo định dạn
 
         elif act_type == "fill":
             if is_password:
-                title_vi = "Nhập mật khẩu tài khoản"
-                title_en = "Enter Account Password"
-                desc_vi = "Điền mật khẩu bảo mật của bạn vào ô Mật khẩu để xác thực quyền truy cập."
-                desc_en = "Enter your secure account password into the Password field to authenticate."
-                slide_vi = "Nhập mật khẩu bảo mật của tài khoản."
-                slide_en = "Enter your secure account password."
-                voice_vi = "Tiếp theo, bạn nhập mật khẩu bảo mật của mình vào ô Mật khẩu."
-                voice_en = "Next, enter your secure password into the password field."
+                title_vi = "Nhập mật khẩu"
+                title_en = "Enter Password"
+                desc_vi = "Nhập mật khẩu bảo mật vào ô Mật khẩu."
+                desc_en = "Enter your password into the Password field."
+                slide_vi = "Nhập mật khẩu vào ô Mật khẩu."
+                slide_en = "Enter your password into the Password field."
+                voice_vi = "Tiếp theo, nhập mật khẩu của bạn vào ô Mật khẩu."
+                voice_en = "Next, enter your password into the password field."
             elif is_username:
                 title_vi = "Nhập tên tài khoản hoặc email"
                 title_en = "Enter Username or Email"
-                desc_vi = "Điền tên tài khoản hoặc địa chỉ email của bạn vào ô đăng nhập."
-                desc_en = "Enter your registered username or email address into the login field."
-                slide_vi = "Nhập tên tài khoản hoặc địa chỉ email."
-                slide_en = "Enter your username or email address."
-                voice_vi = "Bạn điền tên tài khoản hoặc địa chỉ email được cấp vào ô đăng nhập."
-                voice_en = "Enter your registered username or email address into the input field."
+                desc_vi = "Nhập tên tài khoản hoặc địa chỉ email của bạn vào ô đăng nhập."
+                desc_en = "Enter your username or email address into the login field."
+                slide_vi = "Nhập tên tài khoản hoặc email vào ô đăng nhập."
+                slide_en = "Enter your username or email into the login field."
+                voice_vi = "Đầu tiên, bạn nhập tên tài khoản hoặc email vào ô đăng nhập."
+                voice_en = "First, enter your username or email into the login field."
             else:
                 title_vi = f"Nhập thông tin {target_name}"
                 title_en = f"Enter {target_name}"
@@ -256,14 +269,14 @@ Yêu cầu xuất ra DUY NHẤT một chuỗi JSON hợp lệ theo định dạn
 
         elif act_type == "click":
             if is_login_btn:
-                title_vi = "Xác nhận Đăng nhập"
-                title_en = "Submit Login"
-                desc_vi = "Nhấn nút Đăng nhập để hệ thống xác thực tài khoản và chuyển hướng vào trang quản trị."
-                desc_en = "Click the Login button to authenticate and proceed to your dashboard."
-                slide_vi = "Nhấn nút Đăng nhập để truy cập hệ thống."
-                slide_en = "Click Login to access the system."
-                voice_vi = "Bây giờ, bạn bấm vào nút Đăng nhập để truy cập vào hệ thống."
-                voice_en = "Now, click the Login button to access the system."
+                title_vi = "Nhấn nút Đăng nhập"
+                title_en = "Click Login"
+                desc_vi = "Nhấn nút 'Đăng nhập' (Login) để xác thực và truy cập vào hệ thống."
+                desc_en = "Click the 'Login' button to authenticate and access the system."
+                slide_vi = "Nhấn nút Đăng nhập để vào hệ thống."
+                slide_en = "Click Login to enter the system."
+                voice_vi = "Sau đó, bạn nhấn nút Đăng nhập để truy cập vào hệ thống."
+                voice_en = "Then, click the Login button to enter the system."
             elif "menu bên trái" in txt_lower:
                 clean_name = target_name.replace("Mục ", "").replace(" trên Menu bên trái", "").strip()
                 title_vi = f"Truy cập {clean_name} trên Menu bên trái"
@@ -315,8 +328,9 @@ Yêu cầu xuất ra DUY NHẤT một chuỗi JSON hợp lệ theo định dạn
             voice_vi = f"Tại bước này, bạn thực hiện thao tác trên khu vực {target_name}."
             voice_en = f"At this step, interact with the {target_name} area."
 
-        # Nếu có ghi chú từ người dùng, lồng ghép vào mô tả
-        if user_notes:
+        # Nếu có ghi chú từ người dùng, lồng ghép vào mô tả (CHỈ KHI ĐÃ VÀO PHÂN HỆ NGHIỆP VỤ, KHÔNG GẮN VÀO BƯỚC ĐĂNG NHẬP)
+        is_auth_step = is_password or is_username or is_login_btn or act_type == "navigate"
+        if user_notes and not is_auth_step:
             desc_vi += f" Lưu ý nghiệp vụ: {user_notes}."
             desc_en += f" Business note: {user_notes}."
 
@@ -462,8 +476,8 @@ Yêu cầu xuất ra DUY NHẤT một mảng JSON các bước (tối đa 4 - 6 
 [
   {{
     "target_name": "Tên text chính xác của phần tử trên màn hình",
+    "selector": "[data-guide-index='X'] chính xác từ danh sách phần tử được cung cấp",
     "action_type": "click",
-    "selector": "selector gợi ý",
     "purpose": "Mục đích thao tác hoặc nội dung muốn giới thiệu",
     "open_view_after": true
   }}
@@ -537,9 +551,10 @@ Chỉ trả về chuỗi JSON hợp lệ, không thêm văn bản giải thích.
             if is_quote_match or is_word_match:
                 seen_names.add(low)
                 matched_elements.append({
+                    "index": el.get("index"),
                     "target_name": el_text,
                     "action_type": "click",
-                    "selector": el.get("selector", f"a:has-text('{el_text}')"),
+                    "selector": el.get("selector") or f"[data-guide-index='{el.get('index', '')}']",
                     "purpose": f"Khám phá phân hệ {el_text}",
                     "open_view_after": True,
                     "priority": 1 if is_quote_match else 2
@@ -559,9 +574,10 @@ Chỉ trả về chuỗi JSON hợp lệ, không thêm văn bản giải thích.
                 if "menu" in cat.lower() or "sidebar" in cat.lower() or "điều hướng" in cat.lower():
                     seen_names.add(low)
                     matched_elements.append({
+                        "index": el.get("index"),
                         "target_name": el_text,
                         "action_type": "click",
-                        "selector": el.get("selector", f"a:has-text('{el_text}')"),
+                        "selector": el.get("selector") or f"[data-guide-index='{el.get('index', '')}']",
                         "purpose": f"Truy cập chức năng {el_text}",
                         "open_view_after": True,
                         "priority": 3

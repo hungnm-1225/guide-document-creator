@@ -151,13 +151,22 @@ class AutonomousFlowAgent:
             return k_map
 
     async def _extract_deep_features(self, page: Page) -> List[FeatureModule]:
-        """Trích xuất các module chức năng ngóc ngách trên trang Dashboard (bao gồm toàn bộ Navigation & Sidebar)"""
+        """
+        Trích xuất các module chức năng ngóc ngách theo chuẩn Indexed Action Space (browser-use / skyvern style):
+        - Gán thuộc tính duy nhất data-guide-index='1', '2'... trực tiếp lên phần tử DOM
+        - Loại bỏ 100% việc nhầm lẫn selector do trùng class CSS (như div.MuiButtonBase-root)
+        - Quét toàn bộ chiều cao trang (không giới hạn 1080px)
+        """
         js_code = r"""
         () => {
             const list = [];
             const seen = new Set();
+            
+            // Xóa các thuộc tính index cũ nếu có
+            document.querySelectorAll('[data-guide-index]').forEach(el => el.removeAttribute('data-guide-index'));
+
             const selectors = [
-                'aside a, aside button, aside [role="button"]',
+                'aside a, aside button, aside [role="button"], aside div[class*="ListItem"]',
                 'nav a, nav button, nav [role="button"]',
                 '[role="navigation"] a, [role="navigation"] button',
                 '.sidebar a, .sidebar button, [class*="sidebar"] a, [class*="sidebar"] button',
@@ -169,25 +178,25 @@ class AutonomousFlowAgent:
             ].join(', ');
 
             const elements = document.querySelectorAll(selectors);
-            const limit = Math.min(elements.length, 120);
-            for (let i = 0; i < limit; i++) {
+            let idx = 1;
+            for (let i = 0; i < elements.length; i++) {
                 const el = elements[i];
                 const rect = el.getBoundingClientRect();
                 if (rect.width > 16 && rect.height > 12 && rect.top >= 0) {
                     let text = (el.innerText || el.getAttribute('aria-label') || el.getAttribute('title') || '').trim();
                     text = text.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ');
-                    if (text && text.length > 2 && text.length < 50 && !seen.has(text.toLowerCase())) {
+                    if (text && text.length > 2 && text.length < 60 && !seen.has(text.toLowerCase())) {
                         seen.add(text.toLowerCase());
-                        let sel = el.tagName.toLowerCase();
-                        if (el.id) sel += '#' + el.id;
-                        else if (el.className && typeof el.className === 'string') {
-                            const c = el.className.trim().split(/\s+/)[0];
-                            if (c && !c.includes(':')) sel += '.' + c;
-                        }
-                        const isSidebar = rect.left < 380 || el.closest('aside, .sidebar, .drawer, [role="navigation"]');
+                        
+                        // Đánh số chỉ mục trực tiếp vào DOM
+                        el.setAttribute('data-guide-index', idx.toString());
+                        const exactSelector = `[data-guide-index="${idx}"]`;
+
+                        const isSidebar = rect.left < 380 || el.closest('aside, .sidebar, .drawer, [role="navigation"], .MuiDrawer-root') !== null;
                         list.push({
+                            index: idx,
                             name: text,
-                            selector: sel,
+                            selector: exactSelector,
                             url_target: el.getAttribute('href') || null,
                             category: isSidebar ? 'Menu bên trái' : (el.closest('.card, .course-info') ? 'Khóa học' : 'Chức năng'),
                             bounding_box: {
@@ -197,6 +206,8 @@ class AutonomousFlowAgent:
                                 h: Math.round(rect.height)
                             }
                         });
+                        idx++;
+                        if (list.length >= 80) break;
                     }
                 }
             }
@@ -210,6 +221,7 @@ class AutonomousFlowAgent:
             bb_obj = BoundingBox(x=bb["x"], y=bb["y"], w=bb["w"], h=bb["h"]) if bb else None
             modules.append(
                 FeatureModule(
+                    index=it.get("index"),
                     name=it.get("name", ""),
                     selector=it.get("selector", ""),
                     url_target=it.get("url_target"),
@@ -562,40 +574,62 @@ class AutonomousFlowAgent:
             action_type = step_plan.get("action_type", "click")
             purpose = step_plan.get("purpose", "")
             open_view = step_plan.get("open_view_after", True)
+            target_sel = step_plan.get("selector")
 
             console.print(f"\n[cyan]▶ [Agent Action][/cyan] Thực hiện: '[bold]{target_name}[/bold]' ({purpose})")
 
-            # Tìm phần tử trên trang theo text hoặc selector
+            # 1. Tìm phần tử chính xác theo data-guide-index hoặc text trực tiếp
             elem = None
-            try:
-                candidates = await page.query_selector_all(
-                    f"aside a, aside button, nav a, nav button, .sidebar a, a:has-text('{target_name}'), button:has-text('{target_name}'), [role='tab']:has-text('{target_name}'), [role='menuitem']:has-text('{target_name}')"
-                )
-                for c in candidates:
-                    if await c.is_visible():
-                        elem = c
-                        break
-            except Exception:
-                pass
-
-            if not elem and step_plan.get("selector"):
+            if target_sel:
                 try:
-                    elem = await page.query_selector(step_plan["selector"])
+                    elem = await page.query_selector(target_sel)
                 except Exception:
                     pass
 
+            # Fallback nếu selector thay đổi (ví dụ do DOM re-render)
+            if not elem or not await elem.is_visible():
+                try:
+                    find_js = """
+                    (text) => {
+                        const clean = text.toLowerCase().trim();
+                        const candidates = Array.from(document.querySelectorAll('[data-guide-index], a, button, [role="button"], [role="tab"], [role="menuitem"], div[class*="ListItem"]'));
+                        for (const el of candidates) {
+                            const t = (el.innerText || el.getAttribute('aria-label') || '').toLowerCase().trim();
+                            if (t === clean) return el;
+                        }
+                        for (const el of candidates) {
+                            const t = (el.innerText || el.getAttribute('aria-label') || '').toLowerCase().trim();
+                            if (t.includes(clean) && t.length < 60) return el;
+                        }
+                        return null;
+                    }
+                    """
+                    handle = await page.evaluate_handle(find_js, target_name)
+                    if handle and handle.as_element():
+                        elem = handle.as_element()
+                except Exception:
+                    pass
+
+            # 2. Định vị Viewport & Cuộn thông minh (Auto-Scroll & Viewport Centering)
             bbox = None
             if elem:
                 try:
-                    await elem.evaluate('el => el.scrollIntoView({ block: "center", behavior: "smooth" })')
-                    await asyncio.sleep(0.8)
+                    # Đưa phần tử vào giữa khung nhìn màn hình
+                    await elem.scroll_into_view_if_needed(timeout=3000)
+                    await asyncio.sleep(0.4)
                     box = await elem.bounding_box()
+                    if not box or box["y"] < 0 or box["y"] > settings.viewport_height - 30:
+                        await elem.evaluate('el => el.scrollIntoView({ block: "center", inline: "nearest", behavior: "instant" })')
+                        await asyncio.sleep(0.5)
+                        box = await elem.bounding_box()
                     if box:
-                        bbox = BoundingBox(x=box["x"], y=box["y"], w=box["width"], h=box["height"])
+                        # Giới hạn chiều cao Bounding Box nếu vô tình bắt phải thẻ bọc ngoài quá lớn
+                        clamped_h = min(box["height"], 250.0)
+                        bbox = BoundingBox(x=box["x"], y=box["y"], w=box["width"], h=clamped_h)
                 except Exception:
                     pass
 
-            # Bước tương tác (Click / Navigate)
+            # 3. Chụp ảnh màn hình bước click tương tác
             step_idx += 1
             raw_path_step = str(self.output_raw_dir / f"step_{step_idx:02d}_raw.png")
             await self._safe_screenshot(page, raw_path_step)
@@ -604,7 +638,7 @@ class AutonomousFlowAgent:
                 RecordedAction(
                     step_number=step_idx,
                     action_type="click" if action_type == "click" else "navigate",
-                    selector=step_plan.get("selector") or target_name,
+                    selector=target_sel or target_name,
                     input_value=None,
                     element_text=f"Mục {target_name} trên giao diện",
                     bounding_box=bbox,
@@ -615,32 +649,46 @@ class AutonomousFlowAgent:
                 )
             )
 
-            # Thực hiện thao tác click và chờ view mới tải
+            # 4. Thực hiện click và theo dõi quá trình chuyển trang / đổi view
+            prev_url = page.url
             try:
                 if elem:
                     await elem.click(timeout=6000)
-                await asyncio.sleep(2.0)
+                await asyncio.sleep(1.5)
                 try:
-                    await page.wait_for_load_state("domcontentloaded", timeout=6000)
+                    await page.wait_for_load_state("domcontentloaded", timeout=4000)
                 except Exception:
                     pass
+                if page.url != prev_url:
+                    console.print(f"   🌐 Đã điều hướng sang phân hệ mới: [green]{page.url}[/green]")
+                    await asyncio.sleep(1.5)
             except Exception as e:
                 console.print(f"[yellow]⚠️ Tương tác với {target_name}: {e}[/yellow]")
 
-            # Nếu bước này mở ra một view mới, chụp ảnh và ghi nhận bước khám phá view
+            # 5. Nếu bước này mở ra giao diện mới: Reset scroll về đầu trang và chụp view mới
             if open_view:
                 step_idx += 1
+                # QUAN TRỌNG: Luôn cuộn mượt/reset về đầu trang mới để tránh bị kẹt ở đáy trang!
+                try:
+                    await page.evaluate("window.scrollTo({ top: 0, behavior: 'instant' })")
+                    await asyncio.sleep(0.6)
+                except Exception:
+                    pass
+
                 raw_path_view = str(self.output_raw_dir / f"step_{step_idx:02d}_raw.png")
                 await self._safe_screenshot(page, raw_path_view)
 
-                # Tìm khu vực trọng tâm của view mới để định vị Bounding Box
+                # Tìm khu vực tiêu điểm (Card, tiêu đề h1/h2) của view mới với kích thước hợp lý (không lấy container 2000px+)
                 content_bbox = None
                 try:
-                    center_container = await page.query_selector("main, [role='main'], article, .main-content, .content, .card, table")
-                    if center_container and await center_container.is_visible():
-                        cb = await center_container.bounding_box()
-                        if cb and cb["width"] > 100:
-                            content_bbox = BoundingBox(x=cb["x"], y=cb["y"], w=cb["width"], h=cb["height"])
+                    header_card = await page.query_selector("h1, h2, .card, .dashboard-card, .course-item, table, [role='heading']")
+                    if header_card and await header_card.is_visible():
+                        cb = await header_card.bounding_box()
+                        if cb and cb["width"] > 60:
+                            # Khống chế chiều cao tối đa 350px để khung Spotlight bao bọc vừa vặn, thanh thoát
+                            clamped_h = min(cb["height"], 350.0)
+                            clamped_y = max(0.0, cb["y"])
+                            content_bbox = BoundingBox(x=cb["x"], y=clamped_y, w=cb["width"], h=clamped_h)
                 except Exception:
                     pass
 
@@ -658,6 +706,12 @@ class AutonomousFlowAgent:
                         page_url=page.url,
                     )
                 )
+
+                # Giữ vị trí đầu trang để bước tiếp theo click menu mượt mà, không bị kẹt
+                try:
+                    await page.evaluate("window.scrollTo({ top: 0, behavior: 'instant' })")
+                except Exception:
+                    pass
 
         return actions
 

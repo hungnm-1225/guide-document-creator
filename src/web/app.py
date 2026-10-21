@@ -1410,7 +1410,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     // 3. CUSTOM HANDMADE VIDEO PLAYER LOGIC
     // ==========================================
     function togglePlayPause() {
-      if (!customVideo.src) return;
+      if (!customVideo || !customVideo.src) return;
       if (customVideo.paused) {
         customVideo.play();
         updatePlayIcons(true);
@@ -1421,6 +1421,7 @@ DASHBOARD_HTML = """<!DOCTYPE html>
     }
 
     function updatePlayIcons(isPlaying) {
+      if (!ctrlPlayIcon || !bigPlayBtn) return;
       if (isPlaying) {
         ctrlPlayIcon.setAttribute('data-lucide', 'pause');
         bigPlayBtn.classList.add('opacity-0', 'pointer-events-none');
@@ -1431,25 +1432,29 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       lucide.createIcons();
     }
 
-    customVideo.addEventListener('timeupdate', () => {
-      if (!customVideo.duration) return;
-      const pct = (customVideo.currentTime / customVideo.duration) * 100;
-      scrubberProgress.style.width = pct + '%';
-      ctrlTimeDisplay.innerText = formatTime(customVideo.currentTime) + ' / ' + formatTime(customVideo.duration);
-    });
+    if (customVideo) {
+      customVideo.addEventListener('timeupdate', () => {
+        if (!customVideo.duration) return;
+        const pct = (customVideo.currentTime / customVideo.duration) * 100;
+        if (scrubberProgress) scrubberProgress.style.width = pct + '%';
+        if (ctrlTimeDisplay) ctrlTimeDisplay.innerText = formatTime(customVideo.currentTime) + ' / ' + formatTime(customVideo.duration);
+      });
 
-    customVideo.addEventListener('ended', () => {
-      updatePlayIcons(false);
-    });
+      customVideo.addEventListener('ended', () => {
+        updatePlayIcons(false);
+      });
+    }
 
     // Nhấp vào thanh timeline để tua video
-    scrubberBar.addEventListener('click', (e) => {
-      const rect = scrubberBar.getBoundingClientRect();
-      const pos = (e.clientX - rect.left) / rect.width;
-      if (customVideo.duration) {
-        customVideo.currentTime = pos * customVideo.duration;
-      }
-    });
+    if (scrubberBar) {
+      scrubberBar.addEventListener('click', (e) => {
+        const rect = scrubberBar.getBoundingClientRect();
+        const pos = (e.clientX - rect.left) / rect.width;
+        if (customVideo && customVideo.duration) {
+          customVideo.currentTime = pos * customVideo.duration;
+        }
+      });
+    }
 
     function formatTime(secs) {
       const m = Math.floor(secs / 60);
