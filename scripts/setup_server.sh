@@ -35,6 +35,14 @@ else
     echo "✅ Dung lượng Swap hiện tại ($CURRENT_SWAP MB) đã đạt yêu cầu an toàn."
 fi
 
+# 1.1 CHỐNG SLEEP KHI GẬP MÀN HÌNH LAPTOP (CHO SERVER CHẠY 24/7)
+if [ -f "/etc/systemd/logind.conf" ]; then
+    echo "💻 Cấu hình chống Sleep khi gập màn hình laptop (HandleLidSwitch=ignore)..."
+    sudo sed -i 's/#HandleLidSwitch=suspend/HandleLidSwitch=ignore/' /etc/systemd/logind.conf
+    sudo sed -i 's/HandleLidSwitch=suspend/HandleLidSwitch=ignore/' /etc/systemd/logind.conf
+    sudo systemctl restart systemd-logind 2>/dev/null || true
+fi
+
 # 2. CÀI ĐẶT DEPENDENCIES HỆ THỐNG
 echo ""
 echo "👉 [2/6] Cập nhật APT và cài đặt gói hệ thống (Python, FFmpeg, Fonts, LibGL)..."
