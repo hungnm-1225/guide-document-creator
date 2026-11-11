@@ -2,6 +2,7 @@
 .env
 .env.local
 *.env
+server_config.json
 server_config.local.bat
 
 # Python Cache & Bytecode
