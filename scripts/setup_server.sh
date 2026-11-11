@@ -111,7 +111,7 @@ fi
 echo ""
 echo "=========================================================="
 echo "🎉 HOÀN TẤT CÀI ĐẶT TRÊN SERVER!"
-echo "🌐 Ứng dụng Web đang chạy tại: http://0.0.0.0:8000"
+echo "🌐 Ứng dụng Web đang chạy tại: http://0.0.0.0:8888"
 echo "🔍 Kiểm tra trạng thái service: sudo systemctl status guide-creator"
 echo "📜 Xem log thời gian thực: sudo journalctl -u guide-creator -f"
 echo "=========================================================="

@@ -7,7 +7,7 @@ Type=simple
 User=ubuntu
 WorkingDirectory=/home/ubuntu/projects/guide-document-creator
 EnvironmentFile=/home/ubuntu/projects/guide-document-creator/.env
-ExecStart=/home/ubuntu/projects/guide-document-creator/venv/bin/python main.py web --host 0.0.0.0 --port 8000 --no-open-browser
+ExecStart=/home/ubuntu/projects/guide-document-creator/venv/bin/python main.py web --host 0.0.0.0 --port 8888 --no-open-browser
 Restart=always
 RestartSec=5
 

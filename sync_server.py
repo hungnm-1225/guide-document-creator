@@ -160,7 +160,7 @@ def sync_direct(cfg: dict):
 
     print("\n" + "=" * 79)
     print("✨ ĐỒNG BỘ HOÀN TẤT! Ứng dụng đã được cập nhật.")
-    print(f"🌐 Truy cập giao diện: http://{cfg['server_host']}:8000")
+    print(f"🌐 Truy cập giao diện: http://{cfg['server_host']}:8888")
     print("=" * 79)
     input("\nBấm Enter để quay lại Menu...")
 
@@ -276,7 +276,7 @@ def run_setup(cfg: dict):
 
     print("\n" + "=" * 79)
     print("🎉 HOÀN TẤT CÀI ĐẶT SERVER!")
-    print(f"🌐 Mở trình duyệt truy cập: http://{cfg['server_host']}:8000")
+    print(f"🌐 Mở trình duyệt truy cập: http://{cfg['server_host']}:8888")
     print("=" * 79)
     input("\nBấm Enter để quay lại Menu...")
 
