@@ -79,20 +79,20 @@ if [ ! -f ".env" ]; then
     fi
 fi
 
-# Cấu hình tối ưu cho server yếu: dùng Edge-TTS và 2 threads render video
+# Cấu hình tối ưu: bung toàn bộ 4 threads render video để tận dụng hết 4 luồng của chip i3
 if ! grep -q "TTS_ENGINE_VI" .env; then
     echo "TTS_ENGINE_VI=edge-tts" >> .env
 fi
 if ! grep -q "VIDEO_THREADS" .env; then
-    echo "VIDEO_THREADS=2" >> .env
+    echo "VIDEO_THREADS=4" >> .env
 fi
 if ! grep -q "HEADLESS" .env; then
     echo "HEADLESS=true" >> .env
 fi
 
-# 6. THIẾT LẬP SYSTEMD SERVICE CÓ GIỚI HẠN TÀI NGUYÊN (RESOURCE GUARD)
+# 6. THIẾT LẬP SYSTEMD SERVICE (UNLEASHED FULL POWER)
 echo ""
-echo "👉 [6/6] Cài đặt Systemd Service (Capping 1.5GB RAM & 1.5 CPU Core)..."
+echo "👉 [6/6] Cài đặt Systemd Service (Full CPU & RAM Performance)..."
 SERVICE_SRC="$PROJECT_DIR/scripts/guide-creator.service"
 SERVICE_DEST="/etc/systemd/system/guide-creator.service"
 

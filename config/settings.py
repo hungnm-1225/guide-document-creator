@@ -61,7 +61,7 @@ class Settings(BaseModel):
     
     # Video Render Settings
     video_fps: int = Field(default_factory=lambda: int(os.getenv("VIDEO_FPS", "24")))
-    video_threads: int = Field(default_factory=lambda: int(os.getenv("VIDEO_THREADS", "2")))
+    video_threads: int = Field(default_factory=lambda: int(os.getenv("VIDEO_THREADS", "4")))
     video_width: int = 1920
     video_height: int = 1080
     audio_pause_after_step: float = 1.0  # seconds to pause between steps in video

@@ -228,10 +228,10 @@ def run_setup(cfg: dict):
     print("🛠️ CÀI ĐẶT MÔI TRƯỜNG SERVER LẦN ĐẦU (SETUP_SERVER.SH)")
     print("-" * 79)
     print("Quy trình tự động gồm:")
-    print("  1. Tạo bộ đệm Swap 6GB chống tràn RAM cho chip i3 / 4GB RAM.")
+    print("  1. Kiểm tra bộ đệm Swap chống tràn RAM cho chip i3.")
     print("  2. Cài đặt Python 3, venv, FFmpeg, fonts, Playwright Chromium.")
     print("  3. Chống sleep khi gập màn hình laptop (HandleLidSwitch=ignore).")
-    print(f"  4. Cấu hình Systemd Service {cfg['service_name']} có trần RAM 1.5GB / CPU 150%.")
+    print(f"  4. Kích hoạt Systemd Service {cfg['service_name']} (Bung 100% Full CPU & RAM).")
     print("")
 
     confirm = input(f"👉 Xác nhận bắt đầu cài đặt lên {target}? (Y/N): ").strip().lower()
