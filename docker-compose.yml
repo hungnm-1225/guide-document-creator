@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  guide-creator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: guide-creator
+    restart: unless-stopped
+    ports:
+      - "8888:8888"
+    environment:
+      - HEADLESS=true
+      - VIDEO_THREADS=4
+      - TTS_ENGINE_VI=edge-tts
+    env_file:
+      - .env
+    volumes:
+      # Gắn volume ra ngoài host để tài liệu DOCX, Slide, Video xuất ra máy chủ không bị mất
+      - ./output:/app/output
+      - ./.env:/app/.env

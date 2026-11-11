@@ -1,0 +1,10 @@
+output/
+venv/
+.venv/
+__pycache__/
+*/__pycache__/
+*.pyc
+.git/
+.env.local
+server_config.json
+add-ons/
