@@ -256,52 +256,62 @@ class GuidePipeline:
     ) -> Dict[str, Any]:
         """
         Quy trình AI Tự Động Hóa (Kiến trúc 2 lượt):
-        Lượt 1: Pioneer Scout đi tiền trạm, khảo sát ngóc ngách, sau đăng nhập.
-        Lượt 2: Deep Guide Producer bám theo Sơ đồ kiến thức + Ghi chú người dùng để thực thi chi tiết.
+        Lượt 1 (Trinh Sát): đăng nhập, đi thực tế từng chức năng, đọc nội dung, chắp nối với
+                            Mục tiêu + Ghi chú để AI lập Kịch bản.
+        Lượt 2 (Viết Hướng Dẫn): bám Kịch bản để ghi hình, mỗi bước mang theo nội dung trang +
+                            mục đích + ý cần thuyết minh để AI viết đầy đủ.
         """
         start_time = time.time()
-        title_vi = f"Hướng Dẫn {goal}"
-        title_en = f"Walkthrough: {goal}"
-        summary_vi = f"Tài liệu hướng dẫn tự động thực hiện: {goal} trên {url}."
-        summary_en = f"Step-by-step practical guide for: {goal} on {url}."
+        gid = f"guide_{int(start_time)}"
 
         console.print(Panel.fit(
-            f"[bold green]🌟 BẮT ĐẦU CHẾ ĐỘ AI TỰ ĐỘNG HÓA 2 LƯỢT (TWO-PASS AUTO PILOT)[/bold green]\n"
+            f"[bold green]🌟 AI TỰ ĐỘNG HÓA 2 LƯỢT (Trinh Sát ➔ Viết Hướng Dẫn)[/bold green]\n"
+            f"[bold]Mã phiên:[/bold] {gid}\n"
             f"[bold]Mục tiêu:[/bold] {goal}\n"
             f"[bold]URL ban đầu:[/bold] {url}\n"
             f"[bold]Ghi chú người dùng:[/bold] {user_notes or 'Không có'}\n"
-            f"[bold]Chế độ 2 lượt (Scout ➔ Deep Walkthrough):[/bold] {'Bật' if enable_two_pass else 'Tắt'}",
+            f"[bold]Ngôn ngữ:[/bold] {', '.join(languages).upper()}",
             border_style="green"
         ))
 
         k_map = None
         if enable_two_pass:
             try:
-                k_map = await self.auto_agent.pioneer_scout(url=url, credentials=credentials)
+                k_map = await self.auto_agent.pioneer_scout(
+                    url=url, credentials=credentials, goal=goal, user_notes=user_notes,
+                    run_tag=gid, analyzer=self.analyzer,
+                )
             except Exception as e:
-                console.print(f"[yellow]⚠️ Lượt 1 (Scout) gặp cảnh báo: {e}[/yellow]")
+                console.print(f"[yellow]⚠️ Lượt 1 (Trinh Sát) gặp lỗi, Lượt 2 sẽ tự trinh sát: {e}[/yellow]")
 
-        # Thực thi Deep Producer
         recorded_actions = await self.auto_agent.execute_autonomous_guide(
             url=url,
             goal=goal,
             credentials=credentials,
             user_notes=user_notes,
-            knowledge_map=k_map
+            knowledge_map=k_map,
+            run_tag=gid,
+            analyzer=self.analyzer,
         )
+
+        plan = k_map.flow_plan if k_map else None
+        title = plan.guide_title if plan and plan.guide_title else None
+        overview = plan.overview if plan and plan.overview else None
 
         return await self._process_actions_to_artifacts(
             recorded_actions=recorded_actions,
-            title_vi=title_vi,
-            title_en=title_en,
-            summary_vi=summary_vi,
-            summary_en=summary_en,
+            title_vi=title.vi if title else f"Hướng Dẫn {goal}",
+            title_en=title.en if title else f"User Guide: {goal}",
+            summary_vi=overview.vi if overview else f"Tài liệu hướng dẫn: {goal}.",
+            summary_en=overview.en if overview else f"User guide: {goal}.",
             target_url=url,
             languages=languages,
             generate_video=generate_video,
             start_time=start_time,
             user_notes=user_notes,
-            goal=goal
+            goal=goal,
+            gid=gid,
+            flow_plan=plan,
         )
 
     async def run_recorder_flow(
@@ -346,39 +356,57 @@ class GuidePipeline:
         start_time: float,
         user_notes: Optional[str] = None,
         goal: Optional[str] = None,
+        gid: Optional[str] = None,
+        flow_plan=None,
     ) -> Dict[str, Any]:
         """Quy trình chung biến RecordedAction -> ProcessedStep -> DOCX, PPTX, Video"""
+        gid = gid or f"guide_{int(time.time())}"
         total_steps = len(recorded_actions)
         processed_steps: List[ProcessedStep] = []
+        fallback_steps: List[int] = []
 
-        console.print("\n[bold cyan]📍 Đang phân tích AI & Phủ hiệu ứng Spotlight lên từng bước...[/bold cyan]")
-        for action in recorded_actions:
-            console.print(f"  ⚡ Đang phân tích bước {action.step_number}/{total_steps}: [dim]{action.element_text}[/dim]")
+        console.print("\n[bold cyan]📍 Đang viết nội dung từng bước (AI) & phủ hiệu ứng Spotlight...[/bold cyan]")
+        prev_title: Optional[str] = None
+        for i, action in enumerate(recorded_actions):
+            nxt = recorded_actions[i + 1] if i + 1 < total_steps else None
+            next_hint = None
+            if nxt:
+                next_hint = f"{nxt.step_role or nxt.action_type}: {nxt.element_text}"
+            console.print(f"  ⚡ Bước {action.step_number}/{total_steps}: [dim]{action.element_text}[/dim]")
             step_ai = self.analyzer.analyze_step(
                 action=action,
                 total_steps=total_steps,
                 guide_context=f"{title_vi} ({target_url})",
-                user_notes=user_notes
+                user_notes=user_notes,
+                goal=goal,
+                prev_step_title=prev_title,
+                next_step_hint=next_hint,
             )
+            prev_title = step_ai.title.vi
+            if step_ai.is_fallback:
+                fallback_steps.append(action.step_number)
 
             annotated_img_path = self.annotator.annotate_screenshot(
                 raw_image_path=action.raw_screenshot_path,
                 bounding_box=action.bounding_box,
                 step_number=action.step_number,
+                output_filename=f"{gid}_step_{action.step_number:02d}_highlighted.png",
                 draw_spotlight=True,
                 draw_badge=True,
-                draw_cursor=True
+                draw_cursor=action.step_role not in ("view", "expand"),
             )
 
-            processed_step = ProcessedStep(
+            processed_steps.append(ProcessedStep(
                 step_number=action.step_number,
                 raw_action=action,
                 ai_content=step_ai,
                 annotated_screenshot_path=annotated_img_path
-            )
-            processed_steps.append(processed_step)
+            ))
 
-        gid = f"guide_{int(time.time())}"
+        if fallback_steps:
+            console.print(f"[bold red]⚠️ {len(fallback_steps)}/{total_steps} bước phải dùng nội dung DỰ PHÒNG (Gemini lỗi): {fallback_steps}. "
+                          f"Lỗi cuối: {self.analyzer.last_error}[/bold red]")
+
         guidebook = GuideBook(
             guide_id=gid,
             title=BilingualText(vi=title_vi, en=title_en),
@@ -388,7 +416,10 @@ class GuidePipeline:
             user_goal=goal or title_vi,
             user_notes=user_notes,
             steps=processed_steps,
-            recon_report=None
+            recon_report=None,
+            languages=languages,
+            ai_fallback_steps=fallback_steps,
+            flow_plan=flow_plan,
         )
 
         console.print("\n[bold cyan]📍 Đang xuất bản tài liệu Word, Slide 16:9 & Video thuyết minh AI...[/bold cyan]")
@@ -417,6 +448,8 @@ class GuidePipeline:
         console.print(f"\n[bold green]✨ HOÀN TẤT TRONG {elapsed:.1f} GIÂY![/bold green]")
         self._print_summary_table(artifacts)
         return {"guidebook": guidebook, "artifacts": artifacts, "elapsed_seconds": elapsed}
+
+    def _cleanup_temp_assets(self):
         """Xóa các file audio và ảnh raw tạm thời nếu người dùng muốn dọn dẹp"""
         console.print("[dim]🧹 Đang dọn dẹp tài nguyên trung gian...[/dim]")
         # Không xóa output chính (docx, pptx, videos)

@@ -56,6 +56,30 @@ class FeatureModule(BaseModel):
     parent_index: Optional[int] = Field(None, description="Index của menu cha nếu đây là menu con")
     sub_features: List[Dict[str, Any]] = Field(default_factory=list, description="Danh sách các menu con thuộc menu cha này")
     location: Optional[str] = Field("left", description="Vị trí layout: 'left', 'right', 'top', 'center', 'bottom'")
+    # --- Thông tin do Trinh Sát thu thập khi thực sự mở trang ---
+    click_path: List[str] = Field(default_factory=list, description="Chuỗi text cần click từ trang hạ cánh để tới chức năng này")
+    page_url: Optional[str] = Field(None, description="URL sau khi mở chức năng")
+    page_title: Optional[str] = None
+    page_content: Optional[str] = Field(None, description="Nội dung văn bản thực tế đọc được trên trang (đã rút gọn)")
+    page_actions: List[str] = Field(default_factory=list, description="Các nút/tab/liên kết thao tác chính trên trang")
+    children: List[str] = Field(default_factory=list, description="Tên các menu con (nếu là menu cha)")
+
+
+class FlowStep(BaseModel):
+    """Một bước trong Kịch bản do Trinh Sát lập ra để Lượt 2 thực thi"""
+    click_path: List[str] = Field(default_factory=list, description="Đường click từ trang hạ cánh, phần tử cuối là mục tiêu của bước")
+    kind: Literal["open", "expand", "view_current"] = "open"
+    title_hint: Optional[str] = None
+    purpose: str = ""
+    talking_points: List[str] = Field(default_factory=list, description="Các ý nội dung cần giới thiệu ở bước này")
+
+
+class FlowPlan(BaseModel):
+    """Kịch bản toàn bộ hướng dẫn: tiêu đề, tổng quan và các bước"""
+    guide_title: Optional["BilingualText"] = None
+    overview: Optional["BilingualText"] = None
+    steps: List[FlowStep] = Field(default_factory=list)
+    planned_by_ai: bool = False
 
 
 class SiteKnowledgeMap(BaseModel):
@@ -73,6 +97,9 @@ class SiteKnowledgeMap(BaseModel):
     right_sidebar_features: List[FeatureModule] = Field(default_factory=list)
     top_nav_features: List[FeatureModule] = Field(default_factory=list)
     recommended_walkthroughs: List[str] = Field(default_factory=list)
+    explored_region: Optional[str] = Field(None, description="Khu vực menu đã được trinh sát (left/top/right)")
+    dashboard_content: Optional[str] = None
+    flow_plan: Optional[FlowPlan] = None
 
 
 class RecordedAction(BaseModel):
@@ -87,6 +114,11 @@ class RecordedAction(BaseModel):
     timestamp: float
     page_title: str
     page_url: str
+    # --- Ngữ cảnh cho bước Viết Hướng Dẫn ---
+    step_role: Optional[Literal["auth", "navigate", "click", "expand", "view"]] = None
+    page_context: Optional[str] = Field(None, description="Nội dung thực tế đọc được trên trang tại bước này")
+    plan_purpose: Optional[str] = None
+    talking_points: List[str] = Field(default_factory=list)
 
 
 class BilingualText(BaseModel):
@@ -104,6 +136,7 @@ class StepAIAnalysis(BaseModel):
     voiceover_script: BilingualText = Field(..., description="Kịch bản lời thoại AI thuyết minh tự nhiên cho video")
     target_element_label: Optional[BilingualText] = None
     tip: Optional[BilingualText] = Field(None, description="Mẹo nhỏ hoặc lưu ý nếu có")
+    is_fallback: bool = Field(False, description="True nếu nội dung do bộ dự phòng offline sinh ra (Gemini lỗi)")
 
 
 class ProcessedStep(BaseModel):
@@ -130,3 +163,9 @@ class GuideBook(BaseModel):
     artifacts: Dict[str, str] = Field(default_factory=dict)
     steps: List[ProcessedStep] = Field(default_factory=list)
     recon_report: Optional[ReconReport] = None
+    languages: List[str] = Field(default_factory=lambda: ["vi", "en"])
+    ai_fallback_steps: List[int] = Field(default_factory=list, description="Các bước phải dùng nội dung dự phòng")
+    flow_plan: Optional[FlowPlan] = None
+
+
+FlowPlan.model_rebuild()

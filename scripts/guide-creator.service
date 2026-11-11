@@ -1,0 +1,38 @@
+[Unit]
+Description=Guide Document Creator - Automated User-Guide Content Factory
+After=network.target
+
+[Service]
+Type=simple
+# Thay đổi User và WorkingDirectory cho phù hợp với user trên server của bạn
+User=ubuntu
+WorkingDirectory=/home/ubuntu/projects/guide-document-creator
+EnvironmentFile=/home/ubuntu/projects/guide-document-creator/.env
+ExecStart=/home/ubuntu/projects/guide-document-creator/venv/bin/python main.py web --host 0.0.0.0 --port 8000 --no-open-browser
+Restart=always
+RestartSec=5
+
+# ==============================================================================
+# QUẢN LÝ VÀ BẢO VỆ TÀI NGUYÊN (Resource Guard cho Server 4GB RAM + Chip i3 3rd)
+# ==============================================================================
+# Giới hạn RAM tối đa: 1.5GB (MemoryHigh cảnh báo/thu hồi cache ở 1.2GB, MemoryMax 1.5GB)
+# Chừa lại ít nhất 2.5GB RAM cho OS, Tailscale và các dự án khác cùng chạy trên server
+MemoryHigh=1200M
+MemoryMax=1500M
+
+# Giới hạn CPU: tối đa 150% (tức 1.5 core trên tổng số 2 nhân vật lý của chip i3)
+CPUQuota=150%
+
+# Đặt mức ưu tiên CPU thấp hơn (Nice 10) để terminal SSH và hệ thống luôn mượt mà
+Nice=10
+
+# Giới hạn số lượng tiến trình để tránh fork bomb (Chromium spawn quá đà)
+TasksMax=100
+
+# Logging ra journalctl
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=guide-creator
+
+[Install]
+WantedBy=multi-user.target

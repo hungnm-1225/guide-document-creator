@@ -84,7 +84,10 @@ class BrowserExecutor:
         last_error = None
         for ch in channels:
             try:
-                kwargs = {"headless": self.headless}
+                kwargs = {
+                    "headless": self.headless,
+                    "args": ["--no-sandbox", "--disable-dev-shm-usage"]
+                }
                 if ch:
                     kwargs["channel"] = ch
                 return await p.chromium.launch(**kwargs)

@@ -57,7 +57,10 @@ class UIReconnaissance:
         last_error = None
         for ch in channels:
             try:
-                launch_kwargs = {"headless": self.headless}
+                launch_kwargs = {
+                    "headless": self.headless,
+                    "args": ["--no-sandbox", "--disable-dev-shm-usage"]
+                }
                 if ch:
                     launch_kwargs["channel"] = ch
                 browser = await p.chromium.launch(**launch_kwargs)

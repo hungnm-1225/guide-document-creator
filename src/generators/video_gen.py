@@ -127,7 +127,7 @@ class VideoGenerator:
                 if lang == "vi"
                 else step.ai_content.voiceover_script.en
             )
-            filename = f"step_{step.step_number:02d}_{lang}.mp3"
+            filename = f"{guidebook.guide_id}_step_{step.step_number:02d}_{lang}.mp3"
             out_path = self.audio_dir / filename
 
             success = False
@@ -249,7 +249,7 @@ class VideoGenerator:
             fps=settings.video_fps,
             codec="libx264",
             audio_codec="aac",
-            threads=4,
+            threads=settings.video_threads,
             logger=None  # Tránh in rác terminal
         )
 

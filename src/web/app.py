@@ -225,56 +225,53 @@ def _scan_and_index_guides() -> List[Dict[str, Any]]:
                     data = json.load(jf)
                 gid = data.get("guide_id") or f.stem
 
-                # File Video
-                video_file = None
-                if videos_dir.exists():
-                    for vf in sorted(videos_dir.glob(f"*{gid}*.mp4"), key=lambda x: x.stat().st_mtime, reverse=True):
-                        video_file = {
-                            "name": vf.name,
-                            "size_bytes": vf.stat().st_size,
-                            "url": f"/static/output/videos/{vf.name}",
-                            "rel_path": f"videos/{vf.name}"
-                        }
-                        break
+                def _file_info(fp: Path, sub: str) -> Dict[str, Any]:
+                    return {
+                        "name": fp.name,
+                        "size_bytes": fp.stat().st_size,
+                        "url": f"/static/output/{sub}/{fp.name}",
+                        "rel_path": f"{sub}/{fp.name}",
+                    }
 
-                # File Word
-                docx_file = None
-                if docs_dir.exists():
-                    for df in sorted(docs_dir.glob(f"*{gid}*.docx"), key=lambda x: x.stat().st_mtime, reverse=True):
-                        docx_file = {
-                            "name": df.name,
-                            "size_bytes": df.stat().st_size,
-                            "url": f"/static/output/documents/{df.name}",
-                            "rel_path": f"documents/{df.name}"
-                        }
-                        break
+                # File theo từng ngôn ngữ: guide_{lang}_{gid}.mp4/.docx/.md, slides_{lang}_{gid}.pptx
+                files: Dict[str, Dict[str, Any]] = {}
+                for lang in ("vi", "en"):
+                    entry: Dict[str, Any] = {}
+                    for key, folder, sub, pattern in (
+                        ("video", videos_dir, "videos", f"guide_{lang}_{gid}.mp4"),
+                        ("docx", docs_dir, "documents", f"guide_{lang}_{gid}.docx"),
+                        ("md", docs_dir, "documents", f"guide_{lang}_{gid}.md"),
+                        ("pptx", slides_dir, "slides", f"slides_{lang}_{gid}.pptx"),
+                    ):
+                        fp = folder / pattern
+                        entry[key] = _file_info(fp, sub) if fp.exists() else None
+                    if any(entry.values()):
+                        files[lang] = entry
 
-                # File PowerPoint
-                pptx_file = None
-                if slides_dir.exists():
-                    for sf in sorted(slides_dir.glob(f"*{gid}*.pptx"), key=lambda x: x.stat().st_mtime, reverse=True):
-                        pptx_file = {
-                            "name": sf.name,
-                            "size_bytes": sf.stat().st_size,
-                            "url": f"/static/output/slides/{sf.name}",
-                            "rel_path": f"slides/{sf.name}"
-                        }
-                        break
+                def _legacy(key: str, folder: Path, sub: str, ext: str):
+                    for lang in ("vi", "en"):
+                        if files.get(lang, {}).get(key):
+                            return files[lang][key]
+                    if folder.exists():
+                        for fp in sorted(folder.glob(f"*{gid}*.{ext}"), key=lambda x: x.stat().st_mtime, reverse=True):
+                            return _file_info(fp, sub)
+                    return None
 
-                # File Markdown
-                md_file = None
-                if docs_dir.exists():
-                    for mf in sorted(docs_dir.glob(f"*{gid}*.md"), key=lambda x: x.stat().st_mtime, reverse=True):
-                        md_file = {
-                            "name": mf.name,
-                            "size_bytes": mf.stat().st_size,
-                            "url": f"/static/output/documents/{mf.name}",
-                            "rel_path": f"documents/{mf.name}"
-                        }
-                        break
+                video_file = _legacy("video", videos_dir, "videos", "mp4")
+                docx_file = _legacy("docx", docs_dir, "documents", "docx")
+                pptx_file = _legacy("pptx", slides_dir, "slides", "pptx")
+                md_file = _legacy("md", docs_dir, "documents", "md")
 
                 title_val = data.get("title")
                 title_str = title_val.get("vi") if isinstance(title_val, dict) else str(title_val or gid)
+                title_i18n = title_val if isinstance(title_val, dict) else {"vi": title_str, "en": title_str}
+                summary_val = data.get("summary")
+                summary_i18n = summary_val if isinstance(summary_val, dict) else {"vi": str(summary_val or ""), "en": str(summary_val or "")}
+
+                def _pair(obj: Any, fallback: str = "") -> Dict[str, str]:
+                    if isinstance(obj, dict):
+                        return {"vi": obj.get("vi") or obj.get("en") or fallback, "en": obj.get("en") or obj.get("vi") or fallback}
+                    return {"vi": str(obj or fallback), "en": str(obj or fallback)}
 
                 # Format steps to be consistent
                 raw_steps = data.get("steps") or []
@@ -282,14 +279,12 @@ def _scan_and_index_guides() -> List[Dict[str, Any]]:
                 for s in raw_steps:
                     if isinstance(s, dict):
                         ai_c = s.get("ai_content") or {}
-                        t_obj = ai_c.get("title") if isinstance(ai_c, dict) else None
-                        t_text = t_obj.get("vi") if isinstance(t_obj, dict) else s.get("title", f"Bước {s.get('step_number', 1)}")
-
-                        d_obj = ai_c.get("description") if isinstance(ai_c, dict) else None
-                        d_text = d_obj.get("vi") if isinstance(d_obj, dict) else s.get("description", "")
-
-                        v_obj = ai_c.get("voiceover_script") if isinstance(ai_c, dict) else None
-                        v_text = v_obj.get("vi") if isinstance(v_obj, dict) else s.get("voiceover", "")
+                        if not isinstance(ai_c, dict):
+                            ai_c = {}
+                        t_pair = _pair(ai_c.get("title"), s.get("title", f"Bước {s.get('step_number', 1)}"))
+                        d_pair = _pair(ai_c.get("description"), s.get("description", ""))
+                        v_pair = _pair(ai_c.get("voiceover_script"), s.get("voiceover", ""))
+                        tip_pair = _pair(ai_c.get("tip")) if ai_c.get("tip") else None
 
                         img_path = s.get("annotated_screenshot_path") or s.get("image") or ""
                         img_name = Path(img_path).name if img_path else ""
@@ -297,9 +292,14 @@ def _scan_and_index_guides() -> List[Dict[str, Any]]:
 
                         formatted_steps.append({
                             "step_number": s.get("step_number", len(formatted_steps) + 1),
-                            "title": t_text,
-                            "description": d_text,
-                            "voiceover": v_text,
+                            "title": t_pair["vi"],
+                            "description": d_pair["vi"],
+                            "voiceover": v_pair["vi"],
+                            "title_i18n": t_pair,
+                            "description_i18n": d_pair,
+                            "voiceover_i18n": v_pair,
+                            "tip_i18n": tip_pair,
+                            "is_fallback": bool(ai_c.get("is_fallback")),
                             "image_url": img_url
                         })
 
@@ -308,6 +308,8 @@ def _scan_and_index_guides() -> List[Dict[str, Any]]:
                 guide_list.append({
                     "guide_id": gid,
                     "title": title_str,
+                    "title_i18n": title_i18n,
+                    "summary_i18n": summary_i18n,
                     "user_goal": data.get("user_goal") or data.get("summary", {}).get("vi") if isinstance(data.get("summary"), dict) else (data.get("user_goal") or title_str),
                     "user_notes": data.get("user_notes") or "",
                     "target_url": data.get("target_url") or "",
@@ -317,6 +319,9 @@ def _scan_and_index_guides() -> List[Dict[str, Any]]:
                     "docx": docx_file,
                     "pptx": pptx_file,
                     "md": md_file,
+                    "files": files,
+                    "languages": list(files.keys()),
+                    "ai_fallback_steps": data.get("ai_fallback_steps") or [s["step_number"] for s in formatted_steps if s["is_fallback"]],
                     "steps": formatted_steps,
                     "sort_ts": sort_ts,
                 })
@@ -374,6 +379,17 @@ async def delete_guide_endpoint(guide_id: str):
         for f in list(slides_dir.glob(f"*{guide_id}*")):
             f.unlink()
             deleted_files.append(f.name)
+
+    # 5. Delete per-session intermediate files (raw/annotated screenshots, audio, recon map)
+    for sub in ("raw_screenshots", "annotated_images", "audio", "recon"):
+        d = settings.output_dir / sub
+        if d.exists():
+            for f in list(d.glob(f"{guide_id}_*")):
+                try:
+                    f.unlink()
+                    deleted_files.append(f.name)
+                except Exception:
+                    pass
 
     return {"message": f"Đã xóa vĩnh viễn {len(deleted_files)} tệp thành phẩm của {guide_id}", "deleted": deleted_files}
 
@@ -1773,6 +1789,14 @@ DASHBOARD_HTML = """<!DOCTYPE html>
       renderGuideList(filtered);
     }
 
+    let currentGuideLang = 'vi';
+    function setGuideLang(lang) {
+      currentGuideLang = lang;
+      try { if (customVideo) customVideo.pause(); } catch (e) {}
+      const g = allGuides.find(x => x.guide_id === selectedGuideId);
+      renderGuideDetail(g);
+    }
+
     function renderGuideDetail(guide) {
       const container = document.getElementById('guide-detail-container');
       if (!guide) {
@@ -1787,6 +1811,17 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         return;
       }
 
+      // Ngôn ngữ đang xem (VI / EN)
+      const langs = (guide.languages && guide.languages.length) ? guide.languages : ['vi'];
+      if (!langs.includes(currentGuideLang)) currentGuideLang = langs[0];
+      const L = currentGuideLang;
+      const F = (guide.files && guide.files[L]) || { video: guide.video, docx: guide.docx, pptx: guide.pptx, md: guide.md };
+      const pick = (obj, fb) => (obj && (obj[L] || obj.vi || obj.en)) || fb || '';
+      const guideTitle = pick(guide.title_i18n, guide.title);
+      const guideSummary = pick(guide.summary_i18n, '');
+      const fallbackSteps = guide.ai_fallback_steps || [];
+      const langBtn = (code, label) => `<button onclick="setGuideLang('${code}')" class="px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${L === code ? 'bg-rose-600 text-white shadow-xs' : 'bg-white text-slate-600 border border-slate-200 hover:border-rose-300'} ${langs.includes(code) ? '' : 'opacity-40 pointer-events-none'}">${label}</button>`;
+
       // Xây dựng danh sách các bước
       const stepsHtml = (guide.steps || []).map(s => `
         <div class="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
@@ -1795,14 +1830,16 @@ DASHBOARD_HTML = """<!DOCTYPE html>
               <span class="w-6 h-6 rounded-full bg-rose-600 text-white font-bold text-xs flex items-center justify-center shrink-0">
                 ${s.step_number}
               </span>
-              <h5 class="font-bold text-xs text-slate-900">${s.title}</h5>
+              <h5 class="font-bold text-xs text-slate-900">${pick(s.title_i18n, s.title)}</h5>
+              ${s.is_fallback ? '<span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-bold">Nội dung dự phòng</span>' : ''}
             </div>
           </div>
-          <p class="text-xs text-slate-600 leading-relaxed">${s.description || ''}</p>
-          ${s.voiceover ? `
+          <p class="text-xs text-slate-600 leading-relaxed whitespace-pre-line">${pick(s.description_i18n, s.description)}</p>
+          ${s.tip_i18n ? `<p class="text-[11px] text-amber-700 italic">💡 ${pick(s.tip_i18n)}</p>` : ''}
+          ${pick(s.voiceover_i18n, s.voiceover) ? `
             <div class="p-2.5 bg-rose-50/70 border border-rose-200 rounded-lg text-xs text-rose-800 flex items-start gap-2">
               <i data-lucide="mic" class="w-3.5 h-3.5 text-rose-600 shrink-0 mt-0.5"></i>
-              <div class="italic text-[11px]">"${s.voiceover}"</div>
+              <div class="italic text-[11px]">"${pick(s.voiceover_i18n, s.voiceover)}"</div>
             </div>
           ` : ''}
           ${s.image_url ? `
@@ -1824,7 +1861,8 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                 <span class="px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 text-[10px] font-bold uppercase font-mono">Phiên ${guide.guide_id}</span>
                 <span class="text-xs text-slate-400 font-mono">${guide.created_at || ''}</span>
               </div>
-              <h3 class="text-base font-bold text-slate-900 mt-1">${guide.title}</h3>
+              <h3 class="text-base font-bold text-slate-900 mt-1">${guideTitle}</h3>
+              ${guideSummary ? `<p class="text-xs text-slate-500 mt-1 max-w-3xl">${guideSummary}</p>` : ''}
             </div>
             <button onclick="deleteGuide('${guide.guide_id}')" class="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shrink-0">
               <i data-lucide="trash-2" class="w-3.5 h-3.5 text-rose-600"></i> Xóa Vĩnh Viễn Phiên Này
@@ -1859,6 +1897,22 @@ DASHBOARD_HTML = """<!DOCTYPE html>
           </div>
         </div>
 
+        <!-- LANGUAGE SWITCH -->
+        <div class="flex flex-wrap items-center justify-between gap-3 bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-xs">
+          <div class="flex items-center gap-2 text-xs font-bold text-slate-600">
+            <i data-lucide="languages" class="w-4 h-4 text-rose-600"></i> Ngôn ngữ thành phẩm:
+          </div>
+          <div class="flex items-center gap-2">
+            ${langBtn('vi', '🇻🇳 Tiếng Việt')}
+            ${langBtn('en', '🇬🇧 English')}
+          </div>
+        </div>
+        ${fallbackSteps.length ? `
+          <div class="p-3 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-900 flex items-start gap-2">
+            <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-600 shrink-0 mt-0.5"></i>
+            <div><b>${fallbackSteps.length} bước</b> phải dùng nội dung dự phòng vì Gemini không phản hồi (bước: ${fallbackSteps.join(', ')}). Kiểm tra API key / hạn ngạch rồi tạo lại để có nội dung đầy đủ.</div>
+          </div>` : ''}
+
         <!-- 1-CLICK ARTIFACT DOWNLOAD CARDS -->
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <!-- Video MP4 -->
@@ -1868,10 +1922,10 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                 <i data-lucide="film" class="w-4 h-4"></i>
               </div>
               <h5 class="text-xs font-bold text-slate-900">Video MP4</h5>
-              <p class="text-[10px] text-slate-400 font-mono mt-0.5">${guide.video ? (guide.video.size_bytes / (1024*1024)).toFixed(1) + ' MB' : 'Chưa tạo'}</p>
+              <p class="text-[10px] text-slate-400 font-mono mt-0.5">${F.video ? (F.video.size_bytes / (1024*1024)).toFixed(1) + ' MB' : 'Chưa tạo'}</p>
             </div>
-            ${guide.video ? `
-              <a href="${guide.video.url}" download class="w-full py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold rounded-lg transition text-center flex items-center justify-center gap-1">
+            ${F.video ? `
+              <a href="${F.video.url}" download class="w-full py-1.5 bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-bold rounded-lg transition text-center flex items-center justify-center gap-1">
                 <i data-lucide="download" class="w-3 h-3"></i> Tải MP4
               </a>
             ` : '<span class="text-[11px] text-slate-300">Không khả dụng</span>'}
@@ -1884,10 +1938,10 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                 <i data-lucide="file-text" class="w-4 h-4"></i>
               </div>
               <h5 class="text-xs font-bold text-slate-900">Tài Liệu Word</h5>
-              <p class="text-[10px] text-slate-400 font-mono mt-0.5">${guide.docx ? (guide.docx.size_bytes / 1024).toFixed(1) + ' KB' : 'Chưa tạo'}</p>
+              <p class="text-[10px] text-slate-400 font-mono mt-0.5">${F.docx ? (F.docx.size_bytes / 1024).toFixed(1) + ' KB' : 'Chưa tạo'}</p>
             </div>
-            ${guide.docx ? `
-              <a href="${guide.docx.url}" download class="w-full py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded-lg transition text-center flex items-center justify-center gap-1">
+            ${F.docx ? `
+              <a href="${F.docx.url}" download class="w-full py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded-lg transition text-center flex items-center justify-center gap-1">
                 <i data-lucide="download" class="w-3 h-3"></i> Tải DOCX
               </a>
             ` : '<span class="text-[11px] text-slate-300">Không khả dụng</span>'}
@@ -1900,10 +1954,10 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                 <i data-lucide="presentation" class="w-4 h-4"></i>
               </div>
               <h5 class="text-xs font-bold text-slate-900">Slide 16:9</h5>
-              <p class="text-[10px] text-slate-400 font-mono mt-0.5">${guide.pptx ? (guide.pptx.size_bytes / 1024).toFixed(1) + ' KB' : 'Chưa tạo'}</p>
+              <p class="text-[10px] text-slate-400 font-mono mt-0.5">${F.pptx ? (F.pptx.size_bytes / 1024).toFixed(1) + ' KB' : 'Chưa tạo'}</p>
             </div>
-            ${guide.pptx ? `
-              <a href="${guide.pptx.url}" download class="w-full py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold rounded-lg transition text-center flex items-center justify-center gap-1">
+            ${F.pptx ? `
+              <a href="${F.pptx.url}" download class="w-full py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold rounded-lg transition text-center flex items-center justify-center gap-1">
                 <i data-lucide="download" class="w-3 h-3"></i> Tải PPTX
               </a>
             ` : '<span class="text-[11px] text-slate-300">Không khả dụng</span>'}
@@ -1916,10 +1970,10 @@ DASHBOARD_HTML = """<!DOCTYPE html>
                 <i data-lucide="file-code" class="w-4 h-4"></i>
               </div>
               <h5 class="text-xs font-bold text-slate-900">Bản Markdown</h5>
-              <p class="text-[10px] text-slate-400 font-mono mt-0.5">${guide.md ? (guide.md.size_bytes / 1024).toFixed(1) + ' KB' : 'Chưa tạo'}</p>
+              <p class="text-[10px] text-slate-400 font-mono mt-0.5">${F.md ? (F.md.size_bytes / 1024).toFixed(1) + ' KB' : 'Chưa tạo'}</p>
             </div>
-            ${guide.md ? `
-              <a href="${guide.md.url}" download class="w-full py-1.5 bg-slate-800 hover:bg-slate-700 text-white text-[11px] font-bold rounded-lg transition text-center flex items-center justify-center gap-1">
+            ${F.md ? `
+              <a href="${F.md.url}" download class="w-full py-1.5 bg-slate-800 hover:bg-slate-700 text-white text-[11px] font-bold rounded-lg transition text-center flex items-center justify-center gap-1">
                 <i data-lucide="download" class="w-3 h-3"></i> Tải MD
               </a>
             ` : '<span class="text-[11px] text-slate-300">Không khả dụng</span>'}
@@ -1927,17 +1981,17 @@ DASHBOARD_HTML = """<!DOCTYPE html>
         </div>
 
         <!-- VIDEO PLAYER SECTION (IF VIDEO AVAILABLE) -->
-        ${guide.video ? `
+        ${F.video ? `
           <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-xs space-y-3">
             <div class="flex items-center justify-between">
               <h4 class="font-bold text-xs uppercase tracking-wider text-slate-700 flex items-center gap-2">
-                <i data-lucide="film" class="w-4 h-4 text-rose-600"></i> Video Thuyết Minh AI: ${guide.video.name}
+                <i data-lucide="film" class="w-4 h-4 text-rose-600"></i> Video Thuyết Minh AI: ${F.video.name}
               </h4>
-              <span class="text-[11px] font-mono text-slate-400">${(guide.video.size_bytes / (1024*1024)).toFixed(1)} MB</span>
+              <span class="text-[11px] font-mono text-slate-400">${(F.video.size_bytes / (1024*1024)).toFixed(1)} MB</span>
             </div>
 
             <div id="player-container" class="relative group aspect-video bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 shadow-xl select-none flex items-center justify-center">
-              <video id="custom-video" class="w-full h-full object-contain cursor-pointer" preload="metadata" playsinline src="${guide.video.url}"></video>
+              <video id="custom-video" class="w-full h-full object-contain cursor-pointer" preload="metadata" playsinline src="${F.video.url}"></video>
 
               <div id="big-play-btn" onclick="togglePlayPause()" class="absolute inset-0 flex items-center justify-center bg-black/25 backdrop-blur-[1px] transition-all cursor-pointer">
                 <div class="w-16 h-16 rounded-full bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center shadow-2xl transform hover:scale-110 transition">

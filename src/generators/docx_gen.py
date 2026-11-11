@@ -121,7 +121,8 @@ class DocumentGenerator:
             row_cells[0].text = f"#{step.step_number}"
             title_s = step.ai_content.title.vi if lang == "vi" else step.ai_content.title.en
             row_cells[1].text = title_s
-            target_s = step.raw_action.element_text or step.raw_action.selector or "-"
+            label = step.ai_content.target_element_label
+            target_s = (label.vi if lang == "vi" else label.en) if label else (step.raw_action.element_text or "-")
             row_cells[2].text = target_s
 
         doc.add_paragraph()
@@ -207,7 +208,9 @@ class DocumentGenerator:
         lines = [
             f"# {title}",
             "",
-            f"> **Hệ thống**: `{guidebook.target_url}` | **Thời gian**: {guidebook.created_at}",
+            f"> **Hệ thống**: `{guidebook.target_url}` | **Thời gian**: {guidebook.created_at}"
+            if lang == "vi" else
+            f"> **System**: `{guidebook.target_url}` | **Created**: {guidebook.created_at}",
             "",
             "## 1. Tổng quan" if lang == "vi" else "## 1. Overview",
             summary,
@@ -225,12 +228,12 @@ class DocumentGenerator:
             lines.append("")
             # Đường dẫn tương đối tới ảnh
             img_rel = Path(step.annotated_screenshot_path).name
-            lines.append(f"![Bước {step.step_number}](../annotated_images/{img_rel})")
+            lines.append(f"![{'Bước' if lang == 'vi' else 'Step'} {step.step_number}](../annotated_images/{img_rel})")
             lines.append("")
             if step.ai_content.tip:
                 stip = step.ai_content.tip.vi if lang == "vi" else step.ai_content.tip.en
                 if stip and "viền đỏ" not in stip.lower() and "red highlight" not in stip.lower():
-                    lines.append(f"> 💡 **Lưu ý**: {stip}")
+                    lines.append(f"> 💡 **{'Lưu ý' if lang == 'vi' else 'Tip'}**: {stip}")
                     lines.append("")
 
         gid = getattr(guidebook, "guide_id", None) or datetime.now().strftime("%Y%m%d_%H%M%S")
